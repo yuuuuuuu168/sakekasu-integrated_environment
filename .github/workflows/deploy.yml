@@ -64,5 +64,23 @@ jobs:
 
       # 状態のバケット（cdkd-state-<アカウント>）は kakeibo・learning が bootstrap 済み。
       # cdkd 用ロールには bootstrap の権限を持たせていないので、ここでは打たない
+      #
+      # Lambda のコード（監視のスタック）は、cdkd のアセットの置き場所
+      # （cdkd-assets-<アカウント>-<リージョン>）に上げる。cdkd は状態バケットの
+      # cdkd-bootstrap/<リージョン>.json を見て置き場所を決め、無ければ CDK の bootstrap
+      # バケットに上げようとして AccessDenied で落ちる。分かりにくい落ち方を避けるため、先に確かめる。
+      # us-east-1 には sakekasu-integrated-health-global（AWS Health の転送）を置くので両方を見る
+      - name: cdkd のアセットの置き場所を確かめる
+        run: |
+          bucket="cdkd-state-$(aws sts get-caller-identity --query Account --output text)"
+          for region in ap-northeast-1 us-east-1; do
+            if ! aws s3api head-object --bucket "$bucket" --key "cdkd-bootstrap/${region}.json" >/dev/null 2>&1; then
+              echo "::error::${region} の cdkd のアセットの置き場所がない。管理者の権限で 'npx cdkd bootstrap --region ${region}' を一度打つ（docs/monitoring.md）"
+              exit 1
+            fi
+          done
+
+      # スタックごとに env.region を固定してあるので、us-east-1 のスタックもこの 1 回で出る
+      # （AWS_REGION に引きずられるのは cdkd import だけ。こちらは import を使っていない）
       - name: cdkd deploy
         run: npx cdkd deploy --all --yes

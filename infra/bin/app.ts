@@ -4,8 +4,19 @@ import { parseApps } from '../lib/apps';
 import { CdkdDeployStack } from '../lib/cdkd-deploy-stack';
 import { DnsStack } from '../lib/dns-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
+import { HealthGlobalStack } from '../lib/health-global-stack';
+import { parseHealthChecks } from '../lib/health-checks';
 import { IdentityStack, type CustomAuthDomain } from '../lib/identity-stack';
-import { AUTH_DOMAIN, PREFIX, REGION, REPOSITORY } from '../lib/names';
+import { MonitoringStack } from '../lib/monitoring-stack';
+import {
+  AUTH_DOMAIN,
+  GLOBAL_HEALTH_REGION,
+  HEALTH_GLOBAL_STACK_NAME,
+  MONITORING_STACK_NAME,
+  PREFIX,
+  REGION,
+  REPOSITORY,
+} from '../lib/names';
 
 const app = new cdk.App();
 const account = process.env.CDK_DEFAULT_ACCOUNT;
@@ -69,5 +80,20 @@ function buildPlatformStacks(): void {
     cognitoDomainPrefix: context('cognitoDomainPrefix') ?? PREFIX,
     customDomain,
     env: { account, region: REGION },
+  });
+
+  /*
+   * 4 アプリ共通の監視と Slack 通知（docs/monitoring.md）。
+   * 外形監視の対象は context `healthChecks` に書く。グローバルの AWS Health は us-east-1 にしか
+   * 来ないので、別スタックで監視リージョンへ転送する。こちらも参照でつながず、
+   * 転送先のバスの ARN はアカウントとリージョンから組み立てる。
+   */
+  new MonitoringStack(app, MONITORING_STACK_NAME, {
+    healthChecks: parseHealthChecks(app.node.tryGetContext('healthChecks')),
+    env: { account, region: REGION },
+  });
+  new HealthGlobalStack(app, HEALTH_GLOBAL_STACK_NAME, {
+    targetRegion: REGION,
+    env: { account, region: GLOBAL_HEALTH_REGION },
   });
 }

@@ -31,6 +31,22 @@
         "logoutUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"]
       }
     ],
+    "healthChecks": [
+      { "name": "builder", "url": "https://sakekasu-builder.com/", "expectStatus": [200] },
+      { "name": "kakeibo", "url": "https://kakeibo.sakekasu-builder.com/", "expectStatus": [200] },
+      { "name": "learning", "url": "https://learning.sakekasu-builder.com/", "expectStatus": [200] },
+      { "name": "reinvent", "url": "https://reinvent.sakekasu-builder.com/", "expectStatus": [200] },
+      {
+        "name": "auth",
+        "url": "https://auth.sakekasu-builder.com/login?client_id=7thbqs1omkqdgo6k922sqhefdi&response_type=code&redirect_uri=https%3A%2F%2Freinvent.sakekasu-builder.com%2F",
+        "expectStatus": [200]
+      },
+      {
+        "name": "auth-issuer",
+        "url": "https://cognito-idp.ap-northeast-1.amazonaws.com/ap-northeast-1_yw1VDKtxW/.well-known/openid-configuration",
+        "expectStatus": [200]
+      }
+    ],
     "@aws-cdk/core:defaultCrossStackReferences": "strong"
   }
 }

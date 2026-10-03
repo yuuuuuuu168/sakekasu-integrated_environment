@@ -104,9 +104,21 @@ CDK の bootstrap（ap-northeast-1）と cdkd の状態バケット（`cdkd-stat
 
 ### cdkd 用ロールの権限
 
-kakeibo は AdministratorAccess だが、こちらは権限を絞っている（`infra/lib/cdkd-deploy-stack.ts`）。
+kakeibo は AdministratorAccess だが、こちらは権限を絞っている（`infra/lib/cdkd-deploy-stack.ts` と
+`infra/lib/cdkd-monitoring-statements.ts`）。共通ログインと監視（[monitoring.md](monitoring.md)）の両方の分を持つ。
 
-- IAM の操作は 1 つも持たない。ここからロールを作って権限を広げることはできない
+- IAM はロール `sakekasu-integrated-app-*`（監視の Lambda と、AWS Health の転送ルールのロール）だけ。
+  作成と権限の書き換え（`CreateRole`、`PutRolePolicy`、`AttachRolePolicy` など）は、Permissions Boundary
+  `sakekasu-integrated-role-boundary` が付いているときだけ許す。境界はこのスタック（CloudFormation）が作り、
+  中身は監視に要る操作だけ（`infra/lib/role-boundary.ts`）。境界の無いロールの作成・書き換え、境界の取り外し、
+  境界ポリシーの書き換え・削除は Deny する。信頼ポリシーの書き換え（`UpdateAssumeRolePolicy`）は持たない
+- `iam:PassRole` は `sakekasu-integrated-app-*` を Lambda と EventBridge に渡すときだけ
+- GitHub Actions のロール（`sakekasu-integrated-github-actions-*`）には IAM の操作を一切できない（Deny）
+- Lambda、SNS、EventBridge のルール、CloudWatch のアラーム、ロググループは、名前が `sakekasu-integrated-` で
+  始まるものだけ。操作は cdkd の実装が呼ぶ API を列挙した（サービス単位のワイルドカードは使わない）。
+  トピックへの publish と、ログの中身の読み取りは持たない
+- Lambda のコードの置き場所（cdkd のアセットのバケット `cdkd-assets-<アカウント>-<リージョン>`）の読み書き。
+  kakeibo・learning と共用で、キーは中身のハッシュなので名前では絞れない
 - Cognito はユーザープールの設定だけ。ユーザーそのものの操作（`Admin*`、`ListUsers` など）は拒否する
 - Route53 のレコードは `auth.sakekasu-builder.com` の配下だけ書ける
 - 証明書は参照（`acm:DescribeCertificate`）だけ。作成はコンソールで行う
@@ -116,8 +128,7 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
 - リージョンは ap-northeast-1 と us-east-1 に限る
 
 権限が足りなければ、デプロイの途中で `AccessDenied` で落ちる。そのときはエラーに出た操作を
-`cdkd-deploy-stack.ts` に足す。監視のスタック（Lambda、SNS、EventBridge、CloudWatch）を
-足すときは、その分の権限も一緒に足す。
+`cdkd-deploy-stack.ts`（監視の分は `cdkd-monitoring-statements.ts`）に足す。
 
 ## まだやっていないこと
 
