@@ -32,12 +32,13 @@
 | --- | --- |
 | ユーザープール ID | `ap-northeast-1_yw1VDKtxW` |
 | 発行者（JWT の `iss`） | `https://cognito-idp.ap-northeast-1.amazonaws.com/ap-northeast-1_yw1VDKtxW` |
-| ログイン画面（独自ドメインに移るまで） | `https://sakekasu-integrated.auth.ap-northeast-1.amazoncognito.com` |
+| ログイン画面 | `https://auth.sakekasu-builder.com`（それまでは `https://sakekasu-integrated.auth.ap-northeast-1.amazoncognito.com`） |
 | クライアント ID: reinvent | `7thbqs1omkqdgo6k922sqhefdi` |
 | クライアント ID: builder | `iuv75jactiu7ffumrj71khmen` |
 | クライアント ID: kakeibo | `2bsth1alaafgp1utsq3evraib5` |
 | クライアント ID: learning | `290il92ijts07ap3unkae5ql8o` |
 | `auth.sakekasu-builder.com` のゾーン ID | `Z05756913NB3G0RNTABHH`（2026-10-03 に親から委任済み） |
+| ログイン画面の証明書（us-east-1） | `arn:aws:acm:us-east-1:<アプリのアカウント ID>:certificate/67bb48e9-8b29-4a94-8753-af9877847205`（2026-10-03 にコンソールで作成） |
 
 ## 独自ドメインを有効にする順番
 

@@ -8,6 +8,7 @@
     "cognitoDomainPrefix": "sakekasu-integrated",
     "authZone": "auth.sakekasu-builder.com",
     "authHostedZoneId": "Z05756913NB3G0RNTABHH",
+    "authCertificateArn": "arn:aws:acm:us-east-1:<アプリのアカウント ID>:certificate/67bb48e9-8b29-4a94-8753-af9877847205",
     "apps": [
       {
         "name": "reinvent",
