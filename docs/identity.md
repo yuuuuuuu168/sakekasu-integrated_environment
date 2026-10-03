@@ -57,8 +57,46 @@ aws cognito-idp admin-create-user \
 `cdk.json` の `apps` に足す。戻り先（`callbackUrls`、`logoutUrls`）は、アプリが Cognito に渡す URL と
 完全に一致させる（末尾の `/` も区別される）。https か `http://localhost` だけを受け付ける。
 
+## デプロイ
+
+main へのマージで `.github/workflows/deploy.yml` が cdkd で出す。ロールは 2 つある。
+
+| ロール | 入れ方 | 権限 |
+| --- | --- | --- |
+| `sakekasu-integrated-github-actions-deploy` | Mac から一度だけ手で入れる | CDK bootstrap のロールへの AssumeRole と、スタックの出力の読み取りだけ |
+| `sakekasu-integrated-github-actions-cdkd` | deploy ワークフローが毎回 CloudFormation で入れる | いまのスタックに要る操作だけ（下記） |
+
+どちらも、このリポジトリの main で動く GitHub Actions だけが引き受けられる。
+
+### 最初に一度だけ（Mac で）
+
+書き込み権限のある認証情報で、デプロイ用ロールを入れる。
+
+```sh
+cd infra
+npm ci
+npx cdk deploy sakekasu-integrated-github-oidc -c github-oidc=true
+```
+
+CDK の bootstrap（ap-northeast-1）と cdkd の状態バケット（`cdkd-state-<アカウント>`）は、
+同じアカウントの kakeibo・learning が用意済みなので、改めて打たなくてよい。
+
+### cdkd 用ロールの権限
+
+kakeibo は AdministratorAccess だが、こちらは権限を絞っている（`infra/lib/cdkd-deploy-stack.ts`）。
+
+- IAM の操作は 1 つも持たない。ここからロールを作って権限を広げることはできない
+- Cognito はユーザープールの設定だけ。ユーザーそのものの操作（`Admin*`、`ListUsers` など）は拒否する
+- Route53 のレコードは `auth.sakekasu-builder.com` の配下だけ書ける
+- 証明書は ACM の作成・参照・削除だけ
+- cdkd の状態バケットは kakeibo・learning と共用なので、書けるのは `cdkd/sakekasu-integrated-*` の下だけ
+- リージョンは ap-northeast-1 と us-east-1 に限る
+
+権限が足りなければ、デプロイの途中で `AccessDenied` で落ちる。そのときはエラーに出た操作を
+`cdkd-deploy-stack.ts` に足す。監視のスタック（Lambda、SNS、EventBridge、CloudWatch）を
+足すときは、その分の権限も一緒に足す。
+
 ## まだやっていないこと
 
-- デプロイのワークフロー（GitHub Actions のロールをどう作るかが決まっていない）
 - ログイン画面のブランディング（共通テーマの藍と金に合わせる）。いまは Cognito の既定の見た目
 - 各アプリの切り替え（旧ユーザープールからの移行と、データの sub の付け替え）

@@ -14,7 +14,7 @@ sakekasu-learning）が共通で使う基盤。アプリごとに別々だった
 
 | パス | 中身 |
 | --- | --- |
-| `infra/` | AWS の構成（CDK、TypeScript）。デプロイは cdkd で行う予定 |
+| `infra/` | AWS の構成（CDK、TypeScript）。main へのマージで cdkd がデプロイする |
 | `docs/` | 基盤ごとの説明と手順 |
 | `theme/` | 共通テーマ（sakekasu-template から同期） |
 | `scripts/`、`.claude/` | Claude Code での開発用の設定（sakekasu-template から同期） |
