@@ -1,0 +1,34 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["node_modules", "cdk.out", "__tests__", "**/*.test.ts"]
+  },
+  "context": {
+    "cognitoDomainPrefix": "sakekasu-integrated",
+    "authZone": "auth.sakekasu-builder.com",
+    "apps": [
+      {
+        "name": "reinvent",
+        "callbackUrls": ["https://reinvent.sakekasu-builder.com/"],
+        "logoutUrls": ["https://reinvent.sakekasu-builder.com/"]
+      },
+      {
+        "name": "builder",
+        "callbackUrls": ["https://sakekasu-builder.com/", "https://www.sakekasu-builder.com/", "http://localhost:5173/"],
+        "logoutUrls": ["https://sakekasu-builder.com/", "https://www.sakekasu-builder.com/", "http://localhost:5173/"]
+      },
+      {
+        "name": "kakeibo",
+        "callbackUrls": ["https://kakeibo.sakekasu-builder.com/", "http://localhost:5173/"],
+        "logoutUrls": ["https://kakeibo.sakekasu-builder.com/", "http://localhost:5173/"]
+      },
+      {
+        "name": "learning",
+        "callbackUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"],
+        "logoutUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"]
+      }
+    ],
+    "@aws-cdk/core:defaultCrossStackReferences": "strong"
+  }
+}
