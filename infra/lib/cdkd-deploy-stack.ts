@@ -30,7 +30,7 @@ export const DENIED_USER_ACTIONS = [
  *
  * cdkd は CloudFormation を通さず、各サービスの API を呼び出し元の権限で直接叩く。
  * sakekasu-kakeibo では AdministratorAccess を付けているが、こちらは利用者の方針で
- * いま置いているスタック（ゾーン、証明書、ユーザープール）に要る操作だけを許す。
+ * いま置いているスタック（ゾーン、ユーザープール）に要る操作だけを許す。
  * 足りなければデプロイの途中で AccessDenied で落ちるので、そのたびに足す。
  * 監視のスタック（Lambda、SNS、EventBridge、CloudWatch）を足すときに、その分も足す。
  *
@@ -161,24 +161,11 @@ export class CdkdDeployStack extends cdk.Stack {
           conditions: regionCondition,
         }),
 
-        // 証明書（us-east-1）
+        // 証明書はコンソールで作る。Cognito の独自ドメインは、作る人に証明書の参照を求める
         new iam.PolicyStatement({
-          sid: 'CertificateCreate',
-          actions: ['acm:RequestCertificate', 'acm:ListCertificates'],
-          resources: ['*'],
-          conditions: regionCondition,
-        }),
-        new iam.PolicyStatement({
-          sid: 'CertificateManage',
-          actions: [
-            'acm:DescribeCertificate',
-            'acm:DeleteCertificate',
-            'acm:AddTagsToCertificate',
-            'acm:RemoveTagsFromCertificate',
-            'acm:ListTagsForCertificate',
-          ],
-          resources: [`arn:${partition}:acm:*:${account}:certificate/*`],
-          conditions: regionCondition,
+          sid: 'CertificateRead',
+          actions: ['acm:DescribeCertificate'],
+          resources: [`arn:${partition}:acm:us-east-1:${account}:certificate/*`],
         }),
 
         // Route53: ゾーンの作成と、auth.sakekasu-builder.com 配下のレコードだけ
