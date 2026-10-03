@@ -1,0 +1,53 @@
+# 共通基盤（infra/）の型・テスト・合成。AWS の認証は要らない
+name: infra
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+      - '.github/workflows/deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+      - '.github/workflows/deploy.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  infra:
+    name: 型 / テスト / synth
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npx tsc --noEmit
+      - run: npm test
+      # アカウント ID はダミーで合成だけ通す。独自ドメインまで有効にした形も合成しておく
+      - run: npx cdk synth -q
+        env:
+          CDK_DEFAULT_ACCOUNT: '000000000000'
+      - run: >-
+          npx cdk synth -q
+          -c authHostedZoneId=Z0000000000TEST
+          -c authCertificateArn=arn:aws:acm:us-east-1:000000000000:certificate/ci
+        env:
+          CDK_DEFAULT_ACCOUNT: '000000000000'
+      # GitHub Actions のロールのスタックも合成しておく
+      - run: npx cdk synth -q -c github-oidc=true
+        env:
+          CDK_DEFAULT_ACCOUNT: '000000000000'
+      - run: npx cdk synth -q -c cdkd-deploy=true
+        env:
+          CDK_DEFAULT_ACCOUNT: '000000000000'
