@@ -64,12 +64,13 @@ export class CdkdDeployStack extends cdk.Stack {
         // cdkd の状態。バケットは kakeibo・learning と共用なので、書けるのはこのリポジトリの分だけ
         new iam.PolicyStatement({
           sid: 'CdkdStateList',
-          actions: ['s3:ListBucket', 's3:GetBucketLocation', 's3:GetBucketVersioning'],
+          // ListBucketVersions は、失敗時のロールバック記録の古い版を消すときに cdkd が使う
+          actions: ['s3:ListBucket', 's3:ListBucketVersions', 's3:GetBucketLocation', 's3:GetBucketVersioning'],
           resources: [`arn:${partition}:s3:::cdkd-state-${account}`],
         }),
         new iam.PolicyStatement({
           sid: 'CdkdStateReadWrite',
-          actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+          actions: ['s3:GetObject', 's3:GetObjectVersion', 's3:PutObject', 's3:DeleteObject', 's3:DeleteObjectVersion'],
           resources: [`arn:${partition}:s3:::cdkd-state-${account}/cdkd/${PREFIX}-*`],
         }),
         // スタック間の出力の索引と、bootstrap 済みかの印。cdkd が読む
@@ -80,6 +81,34 @@ export class CdkdDeployStack extends cdk.Stack {
             `arn:${partition}:s3:::cdkd-state-${account}/cdkd/_index/*`,
             `arn:${partition}:s3:::cdkd-state-${account}/cdkd-bootstrap/*`,
           ],
+        }),
+
+        /*
+         * Cloud Control API。cdkd は専用の実装が無いリソース（ユーザープールのドメイン・クライアント・
+         * ブランディングなど）をこれで作る。Cloud Control は呼び出し元の権限でそのまま各サービスを
+         * 呼ぶので、ここを許しても、下の Cognito などで許した以上のことはできない。
+         * 初回のデプロイで cloudformation:CreateResource が AccessDenied になって分かった。
+         */
+        new iam.PolicyStatement({
+          sid: 'CloudControl',
+          actions: [
+            'cloudformation:CreateResource',
+            'cloudformation:GetResource',
+            'cloudformation:UpdateResource',
+            'cloudformation:DeleteResource',
+            'cloudformation:ListResources',
+            'cloudformation:GetResourceRequestStatus',
+            'cloudformation:CancelResourceRequest',
+          ],
+          resources: ['*'],
+          conditions: regionCondition,
+        }),
+        // リソースの型の定義（作り直しが要る変更かどうかの判定に cdkd が読む）。読み取りだけ
+        new iam.PolicyStatement({
+          sid: 'ResourceTypeSchema',
+          actions: ['cloudformation:DescribeType'],
+          resources: [`arn:${partition}:cloudformation:*::type/resource/*`],
+          conditions: regionCondition,
         }),
 
         // Cognito: ユーザープールとその設定

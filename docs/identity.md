@@ -89,6 +89,8 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
 - Cognito はユーザープールの設定だけ。ユーザーそのものの操作（`Admin*`、`ListUsers` など）は拒否する
 - Route53 のレコードは `auth.sakekasu-builder.com` の配下だけ書ける
 - 証明書は ACM の作成・参照・削除だけ
+- Cloud Control API（`cloudformation:CreateResource` など）。cdkd はユーザープールのドメインやクライアントをこれで作る。
+  Cloud Control は呼び出し元の権限で各サービスを呼ぶので、上で許した以上のことはできない。CloudFormation のスタック操作は許していない
 - cdkd の状態バケットは kakeibo・learning と共用なので、書けるのは `cdkd/sakekasu-integrated-*` の下だけ
 - リージョンは ap-northeast-1 と us-east-1 に限る
 
