@@ -19,10 +19,10 @@
 | スタック | リージョン | 作られる条件 | 中身 |
 | --- | --- | --- | --- |
 | `sakekasu-integrated-auth-dns` | ap-northeast-1 | context `authZone` | `auth.sakekasu-builder.com` のゾーン |
-| `sakekasu-integrated-auth-cert` | us-east-1 | context `authHostedZoneId` | ログイン画面の証明書 |
 | `sakekasu-integrated-identity` | ap-northeast-1 | いつも | ユーザープール、ドメイン、アプリクライアント |
 
-スタックの間は参照でつながない。ゾーン ID と証明書の ARN は、出力を `cdk.json` に書いて渡す。
+スタックの間は参照でつながない。ゾーン ID と証明書の ARN は `cdk.json` に書いて渡す。
+ログイン画面の証明書（us-east-1）は cdkd では作らず、コンソールで作る（下の手順の 4）。
 
 ## デプロイ済みの値
 
@@ -48,9 +48,14 @@
    `auth` の NS レコードとして 4 つを入れる（手作業）
 3. 委任が効いたことを確かめる。`dig NS auth.sakekasu-builder.com +short` が同じ 4 つを返せばよい。
    ここを飛ばすと、次の手順で証明書の DNS 検証が通らず、デプロイが終わらない
-4. `cdk.json` に `authHostedZoneId`（1 の出力 `HostedZoneId`）を書いてデプロイする。
-   us-east-1 に証明書ができる
-5. `cdk.json` に `authCertificateArn`（4 の出力 `CertificateArn`）を書いてデプロイする。
+4. `cdk.json` に `authHostedZoneId`（1 の出力 `HostedZoneId`）を書く。そのうえで、ACM のコンソール
+   （**バージニア北部 us-east-1**）で証明書を作る
+   - 「証明書をリクエスト」→「パブリック証明書」→ ドメイン名 `auth.sakekasu-builder.com`、検証は DNS
+   - 作ったら証明書を開き、「Route 53 でレコードを作成」を押す。このアカウントの
+     `auth.sakekasu-builder.com` のゾーンに検証用の CNAME が入り、数分で「発行済み」になる
+   - cdkd で作らないのは、cdkd が検証レコードを書かず、CDK の検証設定も ACM に渡せないため
+     （2026-10-03 のデプロイで失敗した）。一度作れば ACM が自動で更新する
+5. `cdk.json` に `authCertificateArn`（4 の証明書の ARN）を書いてデプロイする。
    ログイン画面が `https://auth.sakekasu-builder.com` に移る
 
 Cognito の独自ドメインは、親のドメイン（`sakekasu-builder.com`）に A レコードがあることを求める。
@@ -103,7 +108,7 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
 - IAM の操作は 1 つも持たない。ここからロールを作って権限を広げることはできない
 - Cognito はユーザープールの設定だけ。ユーザーそのものの操作（`Admin*`、`ListUsers` など）は拒否する
 - Route53 のレコードは `auth.sakekasu-builder.com` の配下だけ書ける
-- 証明書は ACM の作成・参照・削除だけ
+- 証明書は参照（`acm:DescribeCertificate`）だけ。作成はコンソールで行う
 - Cloud Control API（`cloudformation:CreateResource` など）。cdkd はユーザープールのドメインやクライアントをこれで作る。
   Cloud Control は呼び出し元の権限で各サービスを呼ぶので、上で許した以上のことはできない。CloudFormation のスタック操作は許していない
 - cdkd の状態バケットは kakeibo・learning と共用なので、書けるのは `cdkd/sakekasu-integrated-*` の下だけ

@@ -11,7 +11,7 @@ import { PREFIX } from './names';
 export interface CustomAuthDomain {
   domainName: string;
   hostedZoneId: string;
-  /** us-east-1 の証明書（CertStack の出力） */
+  /** us-east-1 の証明書（コンソールで作ったもの。docs/identity.md） */
   certificateArn: string;
 }
 
