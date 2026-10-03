@@ -2,7 +2,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { parseApps } from '../lib/apps';
 import { CdkdDeployStack } from '../lib/cdkd-deploy-stack';
-import { CertStack } from '../lib/cert-stack';
 import { DnsStack } from '../lib/dns-stack';
 import { GithubOidcStack } from '../lib/github-oidc-stack';
 import { IdentityStack, type CustomAuthDomain } from '../lib/identity-stack';
@@ -37,9 +36,14 @@ function buildPlatformStacks(): void {
   /*
    * 共通ログイン画面の独自ドメインは、3 段階で有効にする（docs/identity.md）。
    *
-   *   1. authZone を書く        → ゾーンのスタックができる。NS を親に委任してもらう
-   *   2. authHostedZoneId を書く → us-east-1 に証明書のスタックができる
+   *   1. authZone を書く → ゾーンのスタックができる。NS を親に委任してもらう
+   *   2. authHostedZoneId を書き、us-east-1 に証明書をコンソールで作る（cdkd では作らない）
    *   3. authCertificateArn を書く → ログイン画面がその独自ドメインに移る
+   *
+   * 証明書を cdkd で作らないのは、cdkd が ACM の DNS 検証レコードを書かず、CDK が付ける
+   * 検証設定（DomainValidationOptions）も ACM に渡せないため（2026-10-03 のデプロイで
+   * ValidationDomain が null だと弾かれた）。コンソールなら「Route 53 でレコードを作成」で
+   * 同じアカウントのこのゾーンに検証レコードが入る。証明書は一度作れば ACM が自動で更新する。
    *
    * それまでは Cognito のドメイン（cognitoDomainPrefix）でログイン画面を出す。
    * スタックの間は参照でつながず、ID や ARN は context で渡す。
@@ -52,14 +56,6 @@ function buildPlatformStacks(): void {
     new DnsStack(app, `${PREFIX}-auth-dns`, {
       zoneName: authZone,
       env: { account, region: REGION },
-    });
-  }
-
-  if (authHostedZoneId) {
-    new CertStack(app, `${PREFIX}-auth-cert`, {
-      domainName: AUTH_DOMAIN,
-      hostedZoneId: authHostedZoneId,
-      env: { account, region: 'us-east-1' },
     });
   }
 
