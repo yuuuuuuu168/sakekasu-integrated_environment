@@ -1,0 +1,32 @@
+{
+  "template": "yuuuuuuu168/sakekasu-template",
+  "syncedCommit": null,
+  "managed": [
+    ".claude/skills/template-sync/SKILL.md",
+    ".github/workflows/claude-hooks.yml",
+    "scripts/aws-cli-public-key.asc",
+    "scripts/aws-sso-login.sh",
+    "scripts/deny-aws-writes.mjs",
+    "scripts/deny-aws-writes.sh",
+    "scripts/deny-aws-writes.test.mjs",
+    "scripts/japanese-guard/LICENSE",
+    "scripts/japanese-guard/NOTICE",
+    "scripts/japanese-guard/japanese-guard.py",
+    "scripts/japanese-guard/test_japanese_guard.py",
+    "scripts/pr-watch-reminder.mjs",
+    "scripts/setup-aws-profile.sh",
+    "scripts/template-sync.mjs",
+    "scripts/template-sync.test.mjs",
+    "theme/sakekasu-theme.css",
+    "theme/sakekasu-theme.test.mjs"
+  ],
+  "merged": [
+    ".claude/settings.json",
+    ".mcp.json",
+    "CLAUDE.md",
+    "docs/claude-code-web.md",
+    "scripts/aws-verify.conf",
+    "scripts/cloud-setup.sh"
+  ],
+  "exclude": []
+}
