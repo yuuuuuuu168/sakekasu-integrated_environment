@@ -6,11 +6,13 @@ on:
     paths:
       - 'infra/**'
       - '.github/workflows/infra.yml'
+      - '.github/workflows/deploy.yml'
   push:
     branches: [main]
     paths:
       - 'infra/**'
       - '.github/workflows/infra.yml'
+      - '.github/workflows/deploy.yml'
 
 permissions:
   contents: read
@@ -40,5 +42,12 @@ jobs:
           npx cdk synth -q
           -c authHostedZoneId=Z0000000000TEST
           -c authCertificateArn=arn:aws:acm:us-east-1:000000000000:certificate/ci
+        env:
+          CDK_DEFAULT_ACCOUNT: '000000000000'
+      # GitHub Actions のロールのスタックも合成しておく
+      - run: npx cdk synth -q -c github-oidc=true
+        env:
+          CDK_DEFAULT_ACCOUNT: '000000000000'
+      - run: npx cdk synth -q -c cdkd-deploy=true
         env:
           CDK_DEFAULT_ACCOUNT: '000000000000'

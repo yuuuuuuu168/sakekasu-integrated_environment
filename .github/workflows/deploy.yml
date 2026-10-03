@@ -1,0 +1,68 @@
+# 共通基盤のデプロイ。main へのマージで動く。
+#
+# 1. deploy ロール（Mac から一度だけ入れた sakekasu-integrated-github-oidc）で、
+#    cdkd 用ロールのスタックを CloudFormation で入れる
+# 2. cdkd 用ロール（権限を絞ったもの）で、基盤のスタックを cdkd で出す
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+# デプロイの同時実行を防ぐ。後続を打ち切らないのは、最後の main の状態を必ず反映させるため
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-1
+  DEPLOY_ROLE: arn:aws:iam::232791540685:role/sakekasu-integrated-github-actions-deploy
+  CDKD_ROLE: arn:aws:iam::232791540685:role/sakekasu-integrated-github-actions-cdkd
+
+jobs:
+  deploy:
+    name: 共通基盤のデプロイ
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      # 依存の取得とテストは AWS の認証情報を入れる前に済ませる。npm のライフサイクル
+      # スクリプトが認証情報を掴めないようにするため（--ignore-scripts と合わせて二重に塞ぐ）
+      - run: npm ci --ignore-scripts
+      - run: npm test
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # cdkd 用ロールのスタック。ここだけは CloudFormation で入れる（理由は
+      # infra/lib/cdkd-deploy-stack.ts）。変更が無ければ数秒で抜ける
+      - name: cdkd 用ロールを入れる
+        run: npx cdk deploy sakekasu-integrated-cdkd-deploy -c cdkd-deploy=true --require-approval never
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.CDKD_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 状態のバケット（cdkd-state-<アカウント>）は kakeibo・learning が bootstrap 済み。
+      # cdkd 用ロールには bootstrap の権限を持たせていないので、ここでは打たない
+      - name: cdkd deploy
+        run: npx cdkd deploy --all --yes
