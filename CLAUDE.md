@@ -4,7 +4,7 @@
 
 4 つのアプリ（sakekasu-reinvent、sakekasu-builder、sakekasu-kakeibo、sakekasu-learning）の共通基盤。
 共通ログイン（Cognito）と、共通の監視・Slack 通知を置く。構成は [README.md](README.md)、
-共通ログインの作りと手順は [docs/identity.md](docs/identity.md) にある。
+共通ログインの作りと手順は [docs/identity.md](docs/identity.md)、監視と Slack 通知は [docs/monitoring.md](docs/monitoring.md) にある。
 
 ```sh
 (cd infra && npx tsc --noEmit && npm test)
