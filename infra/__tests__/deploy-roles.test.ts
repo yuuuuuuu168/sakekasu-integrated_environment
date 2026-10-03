@@ -95,4 +95,19 @@ describe('cdkd 用ロール（権限を絞る）', () => {
       },
     });
   });
+
+  it('Cloud Control は使えるが、CloudFormation のスタック操作は許さない', () => {
+    const actions = cdkdStatements()
+      .filter((s) => s.Effect === 'Allow')
+      .flatMap((s) => asArray(s.Action))
+      .filter((a) => a.startsWith('cloudformation:'));
+    expect(actions).toContain('cloudformation:CreateResource');
+    expect(actions.filter((a) => /Stack|ChangeSet/.test(a))).toEqual([]);
+  });
+
+  it('状態のバージョン操作も、このリポジトリのスタックの分だけ', () => {
+    const versionDelete = cdkdStatements().filter((s) => asArray(s.Action).includes('s3:DeleteObjectVersion'));
+    expect(versionDelete).toHaveLength(1);
+    expect(JSON.stringify(versionDelete[0].Resource)).toContain('/cdkd/sakekasu-integrated-*');
+  });
 });
