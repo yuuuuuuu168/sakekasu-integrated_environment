@@ -7,6 +7,7 @@
   "context": {
     "cognitoDomainPrefix": "sakekasu-integrated",
     "authZone": "auth.sakekasu-builder.com",
+    "authHostedZoneId": "Z05756913NB3G0RNTABHH",
     "apps": [
       {
         "name": "reinvent",
