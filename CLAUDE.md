@@ -1,6 +1,21 @@
 # CLAUDE.md
 
-<!-- テンプレートから作ったら、この下にアプリの概要・構成・よく使うコマンドを足す -->
+## このリポジトリ
+
+4 つのアプリ（sakekasu-reinvent、sakekasu-builder、sakekasu-kakeibo、sakekasu-learning）の共通基盤。
+共通ログイン（Cognito）と、共通の監視・Slack 通知を置く。構成は [README.md](README.md)、
+共通ログインの作りと手順は [docs/identity.md](docs/identity.md) にある。
+
+```sh
+(cd infra && npx tsc --noEmit && npm test)
+(cd infra && CDK_DEFAULT_ACCOUNT=000000000000 npx cdk synth -q)
+```
+
+- デプロイとユーザーの作成は変更操作なので、このセッションからは行わない
+- スタックの間は参照でつながない。ゾーン ID や証明書の ARN は `infra/cdk.json` の context で渡す
+  （`crossRegionReferences` を使わない）
+- ユーザープールは作り直さない。作り直すと sub が変わり、4 アプリのデータとのひも付けが切れる
+- `theme/` と `scripts/` のフック類は sakekasu-template から同期される。直すときはテンプレート側を直す
 
 ## Git / ブランチ運用
 
