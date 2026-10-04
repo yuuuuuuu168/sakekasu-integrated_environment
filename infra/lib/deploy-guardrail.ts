@@ -180,14 +180,14 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
       resources: otherStacks.map((pattern) => `${stateBucket}/cdkd/${pattern}`),
     }),
     // cdkd の資産置き場（Lambda のコードなど）も全アプリで共用。cdkd-assets-<account>-<region> のほか、
-    // useCdkBootstrapAssets を使うアプリ（reinvent）は CDK bootstrap の cdk-hnb659fds-assets-<account>-<region>
-    // に置く。どちらもキーは中身のハッシュだけで
+    // sakekasu-reinvent は cdkd の設定（app/infra/cdk.json の useCdkBootstrapAssets）で CDK bootstrap の
+    // cdk-hnb659fds-assets-<account>-<region> に置く。どちらもキーは中身のハッシュだけで
     // アプリごとの接頭辞が無いので、名前でアプリを分けられない。cdkd は資産を消さない
     // （有無を確かめて無ければ置くだけ）ので、削除と、削除と同じ結果になるバケットの設定変更
     // （ライフサイクルでの期限切れ、暗号化キーの差し替え、レプリケーションなど）を、状態バケットと同じだけ止める。
     // 上書きは止められない。新しいリージョンの cdkd bootstrap はここに当たるので、人が打つ
     new iam.PolicyStatement({
-      sid: 'DenyDeletingCdkdAssets',
+      sid: 'DenyDestroyingSharedAssets',
       effect: iam.Effect.DENY,
       actions: ['s3:DeleteObject', 's3:DeleteObjectVersion', ...SHARED_BUCKET_WRITE_ACTIONS],
       // ARN の * は / もまたぐので、バケットとその中のオブジェクトの両方に当たる
