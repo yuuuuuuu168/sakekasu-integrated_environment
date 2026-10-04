@@ -17,8 +17,8 @@
       },
       {
         "name": "builder",
-        "callbackUrls": ["https://sakekasu-builder.com/", "https://www.sakekasu-builder.com/", "http://localhost:5173/"],
-        "logoutUrls": ["https://sakekasu-builder.com/", "https://www.sakekasu-builder.com/", "http://localhost:5173/"]
+        "callbackUrls": ["https://sake.sakekasu-builder.com/", "https://sakekasu-builder.com/", "https://www.sakekasu-builder.com/", "http://localhost:5173/"],
+        "logoutUrls": ["https://sake.sakekasu-builder.com/", "https://sakekasu-builder.com/", "https://www.sakekasu-builder.com/", "http://localhost:5173/"]
       },
       {
         "name": "kakeibo",
