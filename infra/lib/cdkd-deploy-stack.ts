@@ -1,7 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
+import { cdkdAppRoleStatements, cdkdMonitoringStatements } from './cdkd-monitoring-statements';
 import { githubMainBranchPrincipal } from './github-principal';
+import { createRoleBoundary } from './role-boundary';
 import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, PREFIX } from './names';
 
 export interface CdkdDeployStackProps extends cdk.StackProps {
@@ -30,11 +32,12 @@ export const DENIED_USER_ACTIONS = [
  *
  * cdkd は CloudFormation を通さず、各サービスの API を呼び出し元の権限で直接叩く。
  * sakekasu-kakeibo では AdministratorAccess を付けているが、こちらは利用者の方針で
- * いま置いているスタック（ゾーン、ユーザープール）に要る操作だけを許す。
+ * いま置いているスタック（ゾーン、ユーザープール、監視）に要る操作だけを許す。
  * 足りなければデプロイの途中で AccessDenied で落ちるので、そのたびに足す。
- * 監視のスタック（Lambda、SNS、EventBridge、CloudWatch）を足すときに、その分も足す。
  *
- * - IAM の操作は 1 つも持たない（ロールを作れないので、ここから権限を広げられない）
+ * - IAM はロール `sakekasu-integrated-app-*` に限り、Permissions Boundary
+ *   （`sakekasu-integrated-role-boundary`。このスタックが作る）が付いている場合だけ作れる。
+ *   境界の無いロールの作成、境界の取り外し・書き換えは拒否する（cdkd-monitoring-statements.ts）
  * - Cognito はユーザープールの設定だけ。ユーザーそのものの操作は拒否する
  * - Route53 のレコードは auth.sakekasu-builder.com の配下だけ書ける
  * - cdkd の状態バケットは他のアプリと共用なので、このリポジトリのスタックの分だけ書ける
@@ -198,12 +201,29 @@ export class CdkdDeployStack extends cdk.Stack {
       ],
     });
 
+    // 監視のスタック（monitoring、health-global）の分。1 つの管理ポリシーは空白を除いて
+    // 6,144 文字までなので、リソースの分とロールの分で管理ポリシーを分けている
+    const monitoringPolicy = new iam.ManagedPolicy(this, 'CdkdMonitoringPolicy', {
+      managedPolicyName: `${PREFIX}-cdkd-deploy-monitoring`,
+      description: 'Least-privilege permissions for cdkd deploy of sakekasu-integrated monitoring stacks',
+      statements: cdkdMonitoringStatements(account),
+    });
+    const appRolePolicy = new iam.ManagedPolicy(this, 'CdkdAppRolePolicy', {
+      managedPolicyName: `${PREFIX}-cdkd-deploy-app-roles`,
+      description: 'Lets cdkd manage sakekasu-integrated-app-* roles only within the permissions boundary',
+      statements: cdkdAppRoleStatements(account),
+    });
+
+    // 監視の Lambda とイベント転送のロールに付ける境界。cdkd 用ロールには付けない
+    // （付けると IAM が拒否され、監視のロールを作れなくなる）。中身は lib/role-boundary.ts
+    createRoleBoundary(this, 'RoleBoundary');
+
     const role = new iam.Role(this, 'CdkdDeployRole', {
       roleName: CDKD_DEPLOY_ROLE_NAME,
       // IAM の description は ASCII + Latin-1 のみ。日本語を入れるとデプロイが 400 で落ちる
       description: 'cdkd deploy from GitHub Actions (main branch only, least privilege)',
       assumedBy: githubMainBranchPrincipal(this, props.repository),
-      managedPolicies: [policy],
+      managedPolicies: [policy, monitoringPolicy, appRolePolicy],
     });
 
     new cdk.CfnOutput(this, 'CdkdDeployRoleArn', { value: role.roleArn });
