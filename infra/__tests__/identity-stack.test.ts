@@ -61,6 +61,15 @@ describe('IdentityStack: アプリクライアント', () => {
     template().resourceCountIs('AWS::Cognito::ManagedLoginBranding', APPS.length);
   });
 
+  it('ログイン画面は Cognito の既定ではなく、共通テーマの色を使う', () => {
+    const brandings = template().findResources('AWS::Cognito::ManagedLoginBranding');
+    for (const b of Object.values(brandings)) {
+      expect(b.Properties.UseCognitoProvidedValues).toBe(false);
+      expect(b.Properties.Settings.components.primaryButton.lightMode.defaults.backgroundColor).toBe('1b365dff');
+      expect(b.Properties.Settings.categories.global.colorSchemeMode).toBe('DYNAMIC');
+    }
+  });
+
   it('認可コードだけを使い、秘密を持たず、Cognito のユーザーだけを通す', () => {
     const clients = template().findResources('AWS::Cognito::UserPoolClient');
     for (const client of Object.values(clients)) {
