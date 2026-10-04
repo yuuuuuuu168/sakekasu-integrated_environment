@@ -131,7 +131,18 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
 権限が足りなければ、デプロイの途中で `AccessDenied` で落ちる。そのときはエラーに出た操作を
 `cdkd-deploy-stack.ts`（監視の分は `cdkd-monitoring-statements.ts`）に足す。
 
+## ログイン画面の見た目
+
+ログイン画面の色は、4 アプリと同じ共通テーマ（`theme/sakekasu-theme.css`）から合成のたびに作る
+（`infra/lib/login-branding.ts`）。テーマの色を直せば、次のデプロイでログイン画面も変わる。
+
+- ライト・ダークは利用者の OS の設定に合わせる（4 アプリの画面と同じ）
+- Cognito の既定の背景の模様は出さず、テーマの地の色だけにする
+- フォント・角丸・認証アプリの絵などの画像は Cognito の既定のまま
+- 設定の形は Cognito の既定（`infra/__tests__/fixtures/cognito-default-branding-settings.json`、
+  `describe-managed-login-branding-by-client --return-merged-resources` で取ったもの）と同じにしてあり、
+  テストで確かめている。Cognito が項目を足したら、取り直して合わせる
+
 ## まだやっていないこと
 
-- ログイン画面のブランディング（共通テーマの藍と金に合わせる）。いまは Cognito の既定の見た目
 - 各アプリの切り替え（旧ユーザープールからの移行と、データの sub の付け替え）
