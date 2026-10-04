@@ -19,7 +19,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
  * - GitHub Actions のロール自身は書き換えない（接頭辞の範囲に入ってしまうため、別に止める）
  * - IAM ユーザー・アクセスキー・MFA・ID プロバイダー、Organizations、アカウント設定、
  *   CloudTrail（証跡と CloudTrail Lake）の停止や削除には触れない。どのアプリのデプロイにも要らない
- * - cdkd の状態バケットそのものと、他のアプリの状態を消したり書き換えたりしない
+ * - cdkd の状態バケットそのものと、他のアプリの状態を消したり書き換えたりしない。共用の資産置き場は消さない
  *
  * App タグを条件にした Deny は、aws:ResourceTag を評価しない API（S3 のオブジェクト操作など）
  * には効かない。状態バケットのオブジェクトは名前で別に止めている。
@@ -172,6 +172,16 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
       effect: iam.Effect.DENY,
       actions: ['s3:PutObject', 's3:DeleteObject', 's3:DeleteObjectVersion'],
       resources: otherStacks.map((pattern) => `${stateBucket}/cdkd/${pattern}`),
+    }),
+    // cdkd の資産置き場（Lambda のコードなど）も全アプリで共用。キーは中身のハッシュだけで
+    // アプリごとの接頭辞が無いので、名前でアプリを分けられない。cdkd は資産を消さない
+    // （有無を確かめて無ければ置くだけ）ので、削除だけを全部止める。上書きは止められない
+    new iam.PolicyStatement({
+      sid: 'DenyDeletingCdkdAssets',
+      effect: iam.Effect.DENY,
+      actions: ['s3:DeleteObject', 's3:DeleteObjectVersion', 's3:DeleteBucket'],
+      // ARN の * は / もまたぐので、バケットとその中のオブジェクトの両方に当たる
+      resources: [`arn:aws:s3:::cdkd-assets-${account}-*`],
     }),
   ];
 }
