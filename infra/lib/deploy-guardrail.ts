@@ -175,11 +175,21 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
     }),
     // cdkd の資産置き場（Lambda のコードなど）も全アプリで共用。キーは中身のハッシュだけで
     // アプリごとの接頭辞が無いので、名前でアプリを分けられない。cdkd は資産を消さない
-    // （有無を確かめて無ければ置くだけ）ので、削除だけを全部止める。上書きは止められない
+    // （有無を確かめて無ければ置くだけ）ので、削除と、削除と同じ結果になるバケットの設定変更
+    // （ライフサイクルでの期限切れ、バージョニングの停止、ポリシーの差し替え）を全部止める。
+    // 上書きは止められない。新しいリージョンの cdkd bootstrap はここに当たるので、人が打つ
     new iam.PolicyStatement({
       sid: 'DenyDeletingCdkdAssets',
       effect: iam.Effect.DENY,
-      actions: ['s3:DeleteObject', 's3:DeleteObjectVersion', 's3:DeleteBucket'],
+      actions: [
+        's3:DeleteObject',
+        's3:DeleteObjectVersion',
+        's3:DeleteBucket',
+        's3:PutLifecycleConfiguration',
+        's3:PutBucketVersioning',
+        's3:PutBucketPolicy',
+        's3:DeleteBucketPolicy',
+      ],
       // ARN の * は / もまたぐので、バケットとその中のオブジェクトの両方に当たる
       resources: [`arn:aws:s3:::cdkd-assets-${account}-*`],
     }),
