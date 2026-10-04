@@ -31,6 +31,23 @@ npm test
 CDK_DEFAULT_ACCOUNT=000000000000 npx cdk synth -q
 ```
 
+### npm audit で残している警告
+
+`infra/` の `npm audit` には、直せない high が 8 件残る（2026-10 時点）。
+
+- `@go-to-k/cdkd` 配下の `braces` / `micromatch` / `fast-glob` / `cdk-local` /
+  `@aws-cdk/toolkit-lib` / `@aws-cdk/cdk-assets-lib`。`braces` に修正版が無い
+- `aws-cdk-lib` に同梱された `brace-expansion`。同梱なので overrides が効かない
+
+どれもグロブを展開するときの DoS で、合成とデプロイのときにだけ動く。展開するのは
+リポジトリに書いた自分たちのグロブで、外から入力が渡る経路は無いので実害は無い。
+cdkd のバージョンを下げたり、cdkd 配下を overrides で差し替えたりはしない。
+上流が直したら、cdkd と aws-cdk-lib を上げて消す。
+
+なお、`vitest` 4 系への更新を npm 10 で入れようとすると、ピア依存の解決で
+`Cannot read properties of null (reading 'edgesOut')` が出て止まる。
+lock を作り直すときは `npx npm@11 install` を使う（`npm ci` は npm 10 のままで通る）。
+
 ## 開発環境
 
 Claude Code on the web で開発している。フック、AWS の読み取り専用ログイン、PR の watch、
