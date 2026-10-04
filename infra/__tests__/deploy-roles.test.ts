@@ -260,7 +260,7 @@ describe('cdkd 用ロール（権限を絞る）', () => {
 
     it('他のアプリの cdkd の状態は書き換えられず、共通基盤の状態は対象に入らない', () => {
       const resources = asArray(statement('DenyWritingOtherAppsState').Resource);
-      expect(resources).toContain(`arn:aws:s3:::cdkd-state-${ACCOUNT}/cdkd/sakekasu-kakeibo-*`);
+      expect(resources).toContain(`arn:aws:s3:::cdkd-state-${ACCOUNT}/cdkd/sakekasu-kakeibo*`);
       expect(resources.some((r) => r.includes('integrated'))).toBe(false);
     });
   });

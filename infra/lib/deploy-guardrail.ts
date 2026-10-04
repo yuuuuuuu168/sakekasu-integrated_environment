@@ -37,13 +37,14 @@ export interface DeployGuardrailProps {
 
 /**
  * 状態バケット（`cdkd/<スタック名>/<リージョン>/state.json`）にある他のアプリのスタック名。
- * アプリやスタックを足したらここにも足す。このアプリの分は呼び出し側の接頭辞で除く
+ * アプリやスタックを足したらここにも足す。このアプリの分は呼び出し側の接頭辞で除く。
+ * 末尾に `-` を付けないのは、接尾辞の無いスタック名（`ReinventPlanner` のような）も拾うため
  */
 export const CDKD_STACK_NAME_PATTERNS: Record<string, string[]> = {
-  builder: ['sakekasu-dev-*', 'sakekasu-staging-*', 'sakekasu-prod-*'],
-  integrated: ['sakekasu-integrated-*'],
-  kakeibo: ['sakekasu-kakeibo-*'],
-  learning: ['sakekasu-learning-*'],
+  builder: ['sakekasu-dev*', 'sakekasu-staging*', 'sakekasu-prod*'],
+  integrated: ['sakekasu-integrated*'],
+  kakeibo: ['sakekasu-kakeibo*'],
+  learning: ['sakekasu-learning*'],
   reinvent: ['ReinventPlanner*'],
 };
 
