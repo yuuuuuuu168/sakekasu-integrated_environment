@@ -233,6 +233,16 @@ describe('監視の監視', () => {
       TreatMissingData: 'breaching',
     });
   });
+
+  // 作成直後に一度鳴るのを消そうとして、止まったら鳴る性質を弱めていないこと。
+  // M of N にすると鳴るまでが延び、FILL の式や MISSING にすると止まりっぱなしで鳴らなくなる
+  // （lib/monitoring-stack.ts のコメント）
+  it('外形監視の沈黙は、1 時間の欠損 1 回でそのまま鳴る', () => {
+    const a = alarm('sakekasu-integrated-watcher-silent-health-check');
+    expect(a.Properties.EvaluationPeriods).toBe(1);
+    expect(a.Properties.DatapointsToAlarm ?? 1).toBe(1);
+    expect(a.Properties.Metrics).toBeUndefined();
+  });
 });
 
 describe('Lambda とロググループ', () => {
