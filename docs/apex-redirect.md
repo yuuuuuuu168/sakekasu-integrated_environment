@@ -16,7 +16,7 @@ Amplify アプリを消す。
 - apex の A レコードは消さない。共通ログインの独自ドメインが、親のドメインに A レコードが
   あることを求める（[identity.md](identity.md)）。この CloudFront に向けておけば満たし続ける
 
-親ゾーン `sakekasu-builder.com` は Organization の管理アカウント（<管理アカウント ID>）にあり、
+親ゾーン `sakekasu-builder.com` は Organization の管理アカウントにあり、
 cdkd の権限は届かない。証明書の検証レコードと、apex・www のレコードは人が入れる。
 
 ## 手順
@@ -97,7 +97,7 @@ curl -sI https://www.sakekasu-builder.com/ | grep -iE '^(HTTP|location)'
 | --- | --- |
 | CloudFront | `E3V1KUNQL6W5RN`（`d1tb8xjqesgxv0.cloudfront.net`） |
 | 証明書 | `arn:aws:acm:us-east-1:<アプリのアカウント ID>:certificate/b40b5b6b-5b1f-47aa-8f43-d7604696a25a`（apex と www の 2 つの名前を 1 枚に入れる。CloudFront に付けられる証明書は 1 枚だけ） |
-| 親ゾーン | `Z0378029DKDVAJ2VE475`（管理アカウント <管理アカウント ID>） |
+| 親ゾーン | `Z0378029DKDVAJ2VE475`（管理アカウント） |
 | 付け替える前 | apex は A（エイリアス）、www は CNAME。どちらも Amplify の `d158s516cgxf7d.cloudfront.net` |
 | 触らないもの | apex の MX（Google のメール）と TXT（Google のサイト確認）、証明書の検証用 CNAME 2 つ（自動更新に要る） |
 
