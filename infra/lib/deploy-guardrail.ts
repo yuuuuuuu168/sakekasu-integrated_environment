@@ -132,6 +132,7 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
         'organizations:*',
         'account:*',
         'sso:*',
+        'sso-directory:*',
         'identitystore:*',
         'cloudtrail:DeleteTrail',
         'cloudtrail:StopLogging',
