@@ -44,3 +44,15 @@ export const APP_ROLE_PREFIX = `${PREFIX}-app-`;
  * ARN を名前から組み立てるので、値を変えると作り直しになる
  */
 export const ROLE_BOUNDARY_NAME = `${PREFIX}-role-boundary`;
+
+/*
+ * apex（sakekasu-builder.com）と www の転送（docs/apex-redirect.md）
+ */
+
+/** apex の転送を受け持つスタック。CloudFront に付ける証明書の都合で us-east-1 に置く */
+export const APEX_REDIRECT_STACK_NAME = `${PREFIX}-apex-redirect`;
+export const APEX_REDIRECT_REGION = 'us-east-1';
+/** 転送で受けるドメイン。どちらも親ゾーン（Organization の管理アカウント）にある */
+export const APEX_DOMAINS = ['sakekasu-builder.com', 'www.sakekasu-builder.com'];
+/** 転送先。builder の画面（sakekasu-builder の docs/sake-subdomain.md） */
+export const APEX_REDIRECT_TARGET = 'sake.sakekasu-builder.com';

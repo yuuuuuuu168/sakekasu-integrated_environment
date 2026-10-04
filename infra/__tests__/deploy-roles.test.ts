@@ -251,6 +251,22 @@ describe('cdkd 用ロール（権限を絞る）', () => {
     expect(actions.filter((a) => /Stack|ChangeSet/.test(a))).toEqual([]);
   });
 
+  // apex の転送（apex-redirect-stack.ts）。DNS は親ゾーン（管理アカウント）にあり、ここからは触れない
+  it('apex の転送の CloudFront と関数は作れるが、キャッシュの無効化と apex のレコードには触れない', () => {
+    const actions = allows().flatMap((s) => asArray(s.Action));
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'cloudfront:CreateFunction',
+        'cloudfront:PublishFunction',
+        'cloudfront:CreateDistribution',
+        'cloudfront:UpdateDistribution',
+      ]),
+    );
+    expect(actions).not.toContain('cloudfront:CreateInvalidation');
+    const records = cdkdStatements().filter((s) => asArray(s.Action).includes('route53:ChangeResourceRecordSets'));
+    expect(JSON.stringify(records)).not.toContain('"sakekasu-builder.com"');
+  });
+
   it('状態のバージョン操作も、このリポジトリのスタックの分だけ', () => {
     const versionDelete = cdkdStatements().filter((s) => asArray(s.Action).includes('s3:DeleteObjectVersion'));
     expect(versionDelete).toHaveLength(1);
