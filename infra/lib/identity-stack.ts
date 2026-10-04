@@ -5,6 +5,7 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import type { Construct } from 'constructs';
 import type { AppClientConfig } from './apps';
+import { loginBrandingFromThemeFile } from './login-branding';
 import { PREFIX } from './names';
 
 /** 共通ログイン画面を独自ドメインで出すときの設定。3 つそろったときだけ使う */
@@ -100,6 +101,7 @@ export class IdentityStack extends cdk.Stack {
       new route53.ARecord(this, 'AuthAliasA', { zone, target: route53.RecordTarget.fromAlias(target) });
     }
 
+    const branding = loginBrandingFromThemeFile();
     for (const app of props.apps) {
       const client = this.userPool.addClient(`Client-${app.name}`, {
         userPoolClientName: `${PREFIX}-${app.name}`,
@@ -135,11 +137,12 @@ export class IdentityStack extends cdk.Stack {
         'ALLOW_REFRESH_TOKEN_AUTH',
       ];
 
-      // 画面の色は後から共通テーマ（藍と金）に合わせる。いまは Cognito の既定のまま
+      // ログイン画面の色は 4 アプリと同じ共通テーマ（藍と金）から作る。画像は Cognito の既定を使う
       new cognito.CfnManagedLoginBranding(this, `Branding-${app.name}`, {
         userPoolId: this.userPool.userPoolId,
         clientId: client.userPoolClientId,
-        useCognitoProvidedValues: true,
+        useCognitoProvidedValues: false,
+        settings: branding,
       });
 
       new cdk.CfnOutput(this, `ClientId-${app.name}`, {
