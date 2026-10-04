@@ -7,6 +7,7 @@ sakekasu-learning）が共通で使う基盤。アプリごとに別々だった
 | --- | --- | --- |
 | 共通ログイン（identity） | 作成中 | 4 アプリで共有する Cognito のユーザープールとログイン画面。[docs/identity.md](docs/identity.md) |
 | 共通の監視と Slack 通知 | 作成中 | アラートの Slack 通知、AWS Health、サイトの死活監視。各アプリのアラームの送り方も。[docs/monitoring.md](docs/monitoring.md) |
+| apex の転送 | 作成中 | `sakekasu-builder.com` と www を builder の画面（`sake.`）へ 301 で転送する CloudFront。[docs/apex-redirect.md](docs/apex-redirect.md) |
 
 共通テーマ（`theme/`）は sakekasu-template から同期で配られる。このリポジトリで書き換えない。
 

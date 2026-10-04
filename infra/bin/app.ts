@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
+import { ApexRedirectStack } from '../lib/apex-redirect-stack';
 import { parseApps } from '../lib/apps';
 import { CdkdDeployStack } from '../lib/cdkd-deploy-stack';
 import { DnsStack } from '../lib/dns-stack';
@@ -9,6 +10,10 @@ import { parseHealthChecks } from '../lib/health-checks';
 import { IdentityStack, type CustomAuthDomain } from '../lib/identity-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
 import {
+  APEX_DOMAINS,
+  APEX_REDIRECT_REGION,
+  APEX_REDIRECT_STACK_NAME,
+  APEX_REDIRECT_TARGET,
   AUTH_DOMAIN,
   GLOBAL_HEALTH_REGION,
   HEALTH_GLOBAL_STACK_NAME,
@@ -95,5 +100,22 @@ function buildPlatformStacks(): void {
   new HealthGlobalStack(app, HEALTH_GLOBAL_STACK_NAME, {
     targetRegion: REGION,
     env: { account, region: GLOBAL_HEALTH_REGION },
+  });
+
+  /*
+   * apex と www を builder の画面（sake.）へ転送する（docs/apex-redirect.md）。
+   *
+   * 証明書の ARN（apexCertificateArn）が入るまでは、CloudFront の既定のドメインだけで作る。
+   * apex と www は Amplify の CloudFront に付いたままで、同じドメインは 2 つの CloudFront に
+   * 同時に付けられない。Amplify から外してから ARN を入れ、こちらに付け替える。
+   * 証明書は auth と同じくコンソールで作る（cdkd では作れない）。
+   */
+  const apexCertificateArn = context('apexCertificateArn');
+  new ApexRedirectStack(app, APEX_REDIRECT_STACK_NAME, {
+    targetDomain: APEX_REDIRECT_TARGET,
+    ...(apexCertificateArn
+      ? { customDomain: { domainNames: APEX_DOMAINS, certificateArn: apexCertificateArn } }
+      : {}),
+    env: { account, region: APEX_REDIRECT_REGION },
   });
 }
