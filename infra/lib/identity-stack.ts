@@ -105,6 +105,7 @@ export class IdentityStack extends cdk.Stack {
         userPoolClientName: `${PREFIX}-${app.name}`,
         // ブラウザで動くアプリなので秘密は持たせない（PKCE で守る）
         generateSecret: false,
+        // 空だと Cognito の既定（SRP など）が有効になる。下で更新だけを明示する
         authFlows: {},
         oAuth: {
           flows: { authorizationCodeGrant: true },
@@ -120,6 +121,19 @@ export class IdentityStack extends cdk.Stack {
         idTokenValidity: cdk.Duration.hours(1),
         refreshTokenValidity: cdk.Duration.days(30),
       });
+
+      /*
+       * ログイン画面を通さないログイン（SRP やカスタム認証）は閉じ、トークンの更新だけを許す。
+       *
+       * authFlows を空にすると CDK は ExplicitAuthFlows を出力せず、その場合 Cognito は
+       * ALLOW_USER_SRP_AUTH・ALLOW_CUSTOM_AUTH・ALLOW_REFRESH_TOKEN_AUTH の 3 つを有効にする。
+       * クライアント ID は画面に載るので、誰でもログイン画面を飛ばしてパスワードを試せる状態だった。
+       * 各アプリはマネージドログインの認可コードだけを使うので、ここを閉じても動きは変わらない
+       * （認可コードの交換は /oauth2/token で、この設定の対象外）。更新は Amplify が使うので残す。
+       */
+      (client.node.defaultChild as cognito.CfnUserPoolClient).explicitAuthFlows = [
+        'ALLOW_REFRESH_TOKEN_AUTH',
+      ];
 
       // 画面の色は後から共通テーマ（藍と金）に合わせる。いまは Cognito の既定のまま
       new cognito.CfnManagedLoginBranding(this, `Branding-${app.name}`, {
