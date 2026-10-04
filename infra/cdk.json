@@ -32,7 +32,7 @@
       }
     ],
     "healthChecks": [
-      { "name": "builder", "url": "https://sakekasu-builder.com/", "expectStatus": [200] },
+      { "name": "builder", "url": "https://sake.sakekasu-builder.com/", "expectStatus": [200] },
       { "name": "kakeibo", "url": "https://kakeibo.sakekasu-builder.com/", "expectStatus": [200] },
       { "name": "learning", "url": "https://learning.sakekasu-builder.com/", "expectStatus": [200] },
       { "name": "reinvent", "url": "https://reinvent.sakekasu-builder.com/", "expectStatus": [200] },
