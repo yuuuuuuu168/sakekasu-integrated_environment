@@ -74,6 +74,15 @@ describe('IdentityStack: アプリクライアント', () => {
     }
   });
 
+  // ExplicitAuthFlows を省くと Cognito は SRP・カスタム認証・更新の 3 つを有効にする。
+  // ログイン画面を通さないパスワードのログインを閉じるため、更新だけを明示する
+  it('ログイン画面を通さないログインを許さず、トークンの更新だけを許す', () => {
+    const clients = template().findResources('AWS::Cognito::UserPoolClient');
+    for (const client of Object.values(clients)) {
+      expect(client.Properties.ExplicitAuthFlows).toEqual(['ALLOW_REFRESH_TOKEN_AUTH']);
+    }
+  });
+
   it('戻り先は設定した URL だけ', () => {
     template().hasResourceProperties('AWS::Cognito::UserPoolClient', {
       ClientName: 'sakekasu-integrated-kakeibo',
