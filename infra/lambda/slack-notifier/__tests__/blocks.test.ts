@@ -616,3 +616,64 @@ describe('アラームのアプリ名', () => {
     expect(header!.text!.text).not.toMatch(/\[.+\]/);
   });
 });
+
+// 説明（alarmDescription）は「鳴ったときの文」なので、復旧の通知で同じ見出しのまま出すと
+// 異常が続いているように読める。ALARM 以外では、何を見ているアラームかの説明として出す
+describe('アラームの説明の欄', () => {
+  const DESCRIPTION = '外形監視で learning（https://learning.example）が期待した応答（200）を返していません';
+
+  function alarm(newState: string, oldState: string): string {
+    return JSON.stringify({
+      AlarmName: 'sakekasu-integrated-health-check-learning',
+      AlarmDescription: DESCRIPTION,
+      NewStateValue: newState,
+      OldStateValue: oldState,
+    });
+  }
+
+  async function descriptionSection(message: string): Promise<string> {
+    const blocks = await buildBlocksForMessage(message);
+    const section = blocks.find((b) => b.type === 'section' && b.text?.text?.includes(DESCRIPTION));
+    return section!.text!.text!;
+  }
+
+  it('ALARM のときは「内容」としてそのまま出す', async () => {
+    expect(await descriptionSection(alarm('ALARM', 'OK'))).toBe(`*内容*\n${DESCRIPTION}`);
+  });
+
+  it('OK のときは「見ているもの」とし、今は解消していると前置きする', async () => {
+    const text = await descriptionSection(alarm('OK', 'INSUFFICIENT_DATA'));
+    expect(text).not.toContain('*内容*');
+    expect(text).toBe(
+      `*このアラームが見ているもの*\n次の状態になると鳴ります（今は解消しています）:\n${DESCRIPTION}`,
+    );
+  });
+
+  it('INSUFFICIENT_DATA のときも「見ているもの」とし、判定できていないと前置きする', async () => {
+    const text = await descriptionSection(alarm('INSUFFICIENT_DATA', 'OK'));
+    expect(text).not.toContain('*内容*');
+    expect(text.startsWith('*このアラームが見ているもの*\n')).toBe(true);
+    expect(text).toContain('データが足りず判定できていません');
+  });
+
+  it('説明が無いアラームでは欄そのものを出さない', async () => {
+    const blocks = await buildBlocksForMessage(
+      JSON.stringify({ AlarmName: 'sakekasu-integrated-x', NewStateValue: 'OK', OldStateValue: 'ALARM' }),
+    );
+    expect(flatten(blocks)).not.toContain('このアラームが見ているもの');
+    expect(flatten(blocks)).not.toContain('*内容*');
+  });
+
+  it('OK のときも説明は無害化して出す', async () => {
+    const blocks = await buildBlocksForMessage(
+      JSON.stringify({
+        AlarmName: 'sakekasu-integrated-x',
+        AlarmDescription: '<!channel> 説明',
+        NewStateValue: 'OK',
+        OldStateValue: 'ALARM',
+      }),
+    );
+    expect(flatten(blocks)).toContain('&lt;!channel&gt; 説明');
+    expect(flatten(blocks)).not.toContain('<!channel>');
+  });
+});

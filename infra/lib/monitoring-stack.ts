@@ -234,6 +234,22 @@ export class MonitoringStack extends cdk.Stack {
       comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
       // Invocations は呼び出しが無いと 0 ではなく「記録なし」になる。記録が無い＝動いていない、とみなす
       treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+      /*
+       * 外形監視の Lambda とこのアラームを同時に作ると、最初の実行より先に最初の評価が来て
+       * 「直近 1 時間の記録なし」で一度 ALARM になり、実行されると数分で OK に戻る（2026-10 の
+       * 初回デプロイで実際に起きた）。これは避けずに受け入れる。作った直後は本当に 1 回も
+       * 動いていないので、指標だけでは「作ったばかり」と「止まった」を見分けられないため。
+       *
+       *   - M of N（評価期間を増やす）: 作成直後は N 期間すべてが欠損なので、BREACHING のままでは
+       *     やはり鳴る。止まってから鳴るまでが延びるだけ
+       *   - FILL(m, 0) の式 + NOT_BREACHING: FILL は評価範囲にデータが 1 点も無い系列を埋めない。
+       *     止まって評価範囲を過ぎると欠損に戻り、NOT_BREACHING で OK（誤った「復旧」）になる。
+       *     止まりっぱなしを鳴らし続けられない。仮に埋めるとしても、作成直後は 0 で鳴る
+       *   - MISSING: すべて欠損だと ALARM ではなく INSUFFICIENT_DATA になり、止まっても鳴らない
+       *
+       * 誤報が出るのは Lambda ごと作り直したときだけ（アラームだけ作り直しても、直近 1 時間の
+       * 記録があるので鳴らない）。docs/monitoring.md の「監視の監視が作成直後に一度鳴る」
+       */
     });
 
     new cdk.CfnOutput(this, 'AlertTopicArn', {
