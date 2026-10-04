@@ -61,7 +61,7 @@
    ログイン画面が `https://auth.sakekasu-builder.com` に移る
 
 Cognito の独自ドメインは、親のドメイン（`sakekasu-builder.com`）に A レコードがあることを求める。
-いまは builder のサイト（Amplify）があるので満たしている。builder を sake. へ移した後は、apex を転送用の CloudFront に向けて満たし続ける（[apex-redirect.md](apex-redirect.md)）。
+apex は builder の画面（sake.）へ転送する CloudFront に向けてあり、A レコードはそこで保っている（[apex-redirect.md](apex-redirect.md)）。apex の A レコードを消さないこと。
 
 ## ユーザーを作る
 
