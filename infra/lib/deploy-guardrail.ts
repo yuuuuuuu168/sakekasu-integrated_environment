@@ -173,7 +173,9 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
       actions: ['s3:PutObject', 's3:DeleteObject', 's3:DeleteObjectVersion'],
       resources: otherStacks.map((pattern) => `${stateBucket}/cdkd/${pattern}`),
     }),
-    // cdkd の資産置き場（Lambda のコードなど）も全アプリで共用。キーは中身のハッシュだけで
+    // cdkd の資産置き場（Lambda のコードなど）も全アプリで共用。cdkd-assets-<account>-<region> のほか、
+    // useCdkBootstrapAssets を使うアプリ（reinvent）は CDK bootstrap の cdk-hnb659fds-assets-<account>-<region>
+    // に置く。どちらもキーは中身のハッシュだけで
     // アプリごとの接頭辞が無いので、名前でアプリを分けられない。cdkd は資産を消さない
     // （有無を確かめて無ければ置くだけ）ので、削除と、削除と同じ結果になるバケットの設定変更
     // （ライフサイクルでの期限切れ、バージョニングの停止、ポリシーの差し替え）を全部止める。
@@ -191,7 +193,7 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
         's3:DeleteBucketPolicy',
       ],
       // ARN の * は / もまたぐので、バケットとその中のオブジェクトの両方に当たる
-      resources: [`arn:aws:s3:::cdkd-assets-${account}-*`],
+      resources: [`arn:aws:s3:::cdkd-assets-${account}-*`, `arn:aws:s3:::cdk-hnb659fds-assets-${account}-*`],
     }),
   ];
 }
