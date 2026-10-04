@@ -3,8 +3,9 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
 import { cdkdAppRoleStatements, cdkdMonitoringStatements } from './cdkd-monitoring-statements';
 import { githubMainBranchPrincipal } from './github-principal';
+import { deployGuardrailStatements } from './deploy-guardrail';
 import { createRoleBoundary } from './role-boundary';
-import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, PREFIX } from './names';
+import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME, PREFIX } from './names';
 
 export interface CdkdDeployStackProps extends cdk.StackProps {
   /** 信頼する GitHub リポジトリ（owner/repo 形式） */
@@ -243,6 +244,19 @@ export class CdkdDeployStack extends cdk.Stack {
       statements: cdkdAppRoleStatements(account),
     });
 
+    // 同じアカウントにいる 4 アプリのリソースに触れないためのガードレール（Deny だけ）。
+    // 中身と、何を防げて何を防げないかは lib/deploy-guardrail.ts
+    const guardrailPolicy = new iam.ManagedPolicy(this, 'CdkdGuardrailPolicy', {
+      managedPolicyName: `${PREFIX}-cdkd-deploy-guardrail`,
+      description: 'Deny-only guardrail that keeps cdkd deploys of sakekasu-integrated inside the integrated app',
+      statements: deployGuardrailStatements({
+        account,
+        app: 'integrated',
+        resourceNamePrefix: `${PREFIX}-`,
+        protectedRoleNames: [CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME],
+      }),
+    });
+
     // 監視の Lambda とイベント転送のロールに付ける境界。cdkd 用ロールには付けない
     // （付けると IAM が拒否され、監視のロールを作れなくなる）。中身は lib/role-boundary.ts
     createRoleBoundary(this, 'RoleBoundary');
@@ -252,7 +266,7 @@ export class CdkdDeployStack extends cdk.Stack {
       // IAM の description は ASCII + Latin-1 のみ。日本語を入れるとデプロイが 400 で落ちる
       description: 'cdkd deploy from GitHub Actions (main branch only, least privilege)',
       assumedBy: githubMainBranchPrincipal(this, props.repository),
-      managedPolicies: [policy, monitoringPolicy, appRolePolicy],
+      managedPolicies: [policy, monitoringPolicy, appRolePolicy, guardrailPolicy],
     });
 
     new cdk.CfnOutput(this, 'CdkdDeployRoleArn', { value: role.roleArn });
