@@ -164,6 +164,35 @@ export class CdkdDeployStack extends cdk.Stack {
           conditions: regionCondition,
         }),
 
+        // apex の転送（apex-redirect-stack.ts）。CloudFront Functions は cdkd に専用の実装が無く、
+        // Cloud Control 経由で作られる。その先で呼ばれる操作もここで許す。
+        // ディストリビューションの ID は作るまで決まらないので、リソースでは絞れない
+        new iam.PolicyStatement({
+          sid: 'ApexRedirect',
+          actions: [
+            'cloudfront:CreateFunction',
+            'cloudfront:DescribeFunction',
+            'cloudfront:GetFunction',
+            'cloudfront:UpdateFunction',
+            'cloudfront:PublishFunction',
+            'cloudfront:DeleteFunction',
+            'cloudfront:ListFunctions',
+            'cloudfront:CreateDistribution',
+            'cloudfront:CreateDistributionWithTags',
+            'cloudfront:GetDistribution',
+            'cloudfront:GetDistributionConfig',
+            'cloudfront:DeleteDistribution',
+            'cloudfront:ListDistributions',
+            'cloudfront:GetCachePolicy',
+            'cloudfront:ListCachePolicies',
+            'cloudfront:TagResource',
+            'cloudfront:UntagResource',
+            'cloudfront:ListTagsForResource',
+          ],
+          resources: ['*'],
+          conditions: regionCondition,
+        }),
+
         // 証明書はコンソールで作る。Cognito の独自ドメインは、作る人に証明書の参照を求める
         new iam.PolicyStatement({
           sid: 'CertificateRead',
