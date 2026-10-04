@@ -81,9 +81,9 @@ describe('cdkd 用ロール（権限を絞る）', () => {
     }
   });
 
-  it('ロールに付く管理ポリシーは 3 つ（既存の分、監視の分、ロールの分）で、境界は付けない', () => {
+  it('ロールに付く管理ポリシーは 4 つ（既存の分、監視の分、ロールの分、ガードレール）で、境界は付けない', () => {
     const role = Object.values(cdkdTemplate().findResources('AWS::IAM::Role'))[0];
-    expect(role.Properties.ManagedPolicyArns).toHaveLength(3);
+    expect(role.Properties.ManagedPolicyArns).toHaveLength(4);
     expect(role.Properties.PermissionsBoundary).toBeUndefined();
   });
 
@@ -215,6 +215,56 @@ describe('cdkd 用ロール（権限を絞る）', () => {
     });
   });
 
+  describe('ガードレール（他のアプリに触れない）', () => {
+    function guardrail(): Statement[] {
+      const policies = Object.values(
+        cdkdTemplate().findResources('AWS::IAM::ManagedPolicy', {
+          Properties: { ManagedPolicyName: 'sakekasu-integrated-cdkd-deploy-guardrail' },
+        }),
+      );
+      expect(policies).toHaveLength(1);
+      return policies[0].Properties.PolicyDocument.Statement as Statement[];
+    }
+    const statement = (sid: string) => {
+      const found = guardrail().find((s) => s.Sid === sid);
+      expect(found, sid).toBeDefined();
+      return found as Statement & { NotResource?: string[] };
+    };
+
+    it('中身は Deny だけ', () => {
+      expect(guardrail().every((s) => s.Effect === 'Deny')).toBe(true);
+    });
+
+    // Cloud Control と cloudfront:UpdateDistribution はリソースを絞れないので、ここで閉じる
+    it('他のアプリの App タグが付いたリソースと、他のアプリの App タグの付与を拒否する', () => {
+      expect(statement('DenyOtherAppsResources').Condition).toEqual({
+        Null: { 'aws:ResourceTag/App': 'false' },
+        StringNotEquals: { 'aws:ResourceTag/App': 'integrated' },
+      });
+      expect(statement('DenyForeignAppTag').Condition).toEqual({
+        Null: { 'aws:RequestTag/App': 'false' },
+        StringNotEquals: { 'aws:RequestTag/App': 'integrated' },
+      });
+    });
+
+    it('IAM ロールは sakekasu-integrated- の外では作り替えられず、デプロイ用ロールは別に守る', () => {
+      expect(statement('DenyRolesOutsideApp').NotResource).toEqual([
+        `arn:aws:iam::${ACCOUNT}:role/sakekasu-integrated-*`,
+        `arn:aws:iam::${ACCOUNT}:policy/sakekasu-integrated-*`,
+      ]);
+      expect(asArray(statement('DenyTamperingWithGithubActionsRoles').Resource)).toEqual([
+        `arn:aws:iam::${ACCOUNT}:role/sakekasu-integrated-github-actions-cdkd`,
+        `arn:aws:iam::${ACCOUNT}:role/sakekasu-integrated-github-actions-deploy`,
+      ]);
+    });
+
+    it('他のアプリの cdkd の状態は書き換えられず、共通基盤の状態は対象に入らない', () => {
+      const resources = asArray(statement('DenyWritingOtherAppsState').Resource);
+      expect(resources).toContain(`arn:aws:s3:::cdkd-state-${ACCOUNT}/cdkd/sakekasu-kakeibo*`);
+      expect(resources.some((r) => r.includes('integrated'))).toBe(false);
+    });
+  });
+
   it('Cognito のユーザーそのものの操作は拒否する', () => {
     const deny = cdkdStatements().find((s) => s.Sid === 'DenyCognitoUserData');
     expect(deny?.Effect).toBe('Deny');
@@ -268,7 +318,9 @@ describe('cdkd 用ロール（権限を絞る）', () => {
   });
 
   it('状態のバージョン操作も、このリポジトリのスタックの分だけ', () => {
-    const versionDelete = cdkdStatements().filter((s) => asArray(s.Action).includes('s3:DeleteObjectVersion'));
+    const versionDelete = cdkdStatements().filter(
+      (s) => s.Effect === 'Allow' && asArray(s.Action).includes('s3:DeleteObjectVersion'),
+    );
     expect(versionDelete).toHaveLength(1);
     expect(JSON.stringify(versionDelete[0].Resource)).toContain('/cdkd/sakekasu-integrated-*');
   });
