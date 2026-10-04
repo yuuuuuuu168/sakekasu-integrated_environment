@@ -202,6 +202,27 @@ function safeText(text: string, limit: number = SLACK_TEXT_LIMIT): string {
 }
 
 /**
+ * アラームの説明（alarmDescription）の欄。
+ *
+ * 説明は「鳴ったときに何が起きているか」の文で書いてあり、状態によらず同じものが届く。
+ * ALARM ならそのまま「内容」として読めるが、OK やデータ不足のときに同じ見出しで出すと、
+ * 復旧したのに異常の文に見えて紛らわしい（2026-10 のデプロイ直後、全アラームの
+ * INSUFFICIENT_DATA → OK でこれが並んだ）。ALARM 以外では、何を見ているアラームかの
+ * 説明だと分かる欄名と前置きにする
+ */
+function descriptionText(state: string | undefined, description: string): string {
+  const body = safeText(description, 1500);
+  switch (state) {
+    case 'OK':
+      return `*このアラームが見ているもの*\n次の状態になると鳴ります（今は解消しています）:\n${body}`;
+    case 'INSUFFICIENT_DATA':
+      return `*このアラームが見ているもの*\n次の状態になると鳴ります（今はデータが足りず判定できていません）:\n${body}`;
+    default:
+      return `*内容*\n${body}`;
+  }
+}
+
+/**
  * アラーム本文を Slack のブロックに組み立てる。
  * 何が起きたかと、次にどこを見ればよいかが1画面で分かることを優先する。
  */
@@ -244,7 +265,7 @@ function buildAlarmBlocks(alarm: AlarmMessage, fallbackTime: string): unknown[] 
   if (alarm.AlarmDescription) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*内容*\n${safeText(alarm.AlarmDescription, 1500)}` },
+      text: { type: 'mrkdwn', text: descriptionText(alarm.NewStateValue, alarm.AlarmDescription) },
     });
   }
   if (alarm.NewStateReason) {
