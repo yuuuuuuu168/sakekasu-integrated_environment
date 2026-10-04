@@ -48,6 +48,26 @@ export const CDKD_STACK_NAME_PATTERNS: Record<string, string[]> = {
   reinvent: ['ReinventPlanner*'],
 };
 
+/**
+ * 全アプリで共用するバケット（cdkd の状態と資産置き場）の削除と、削除・持ち出し・読めなくするのと
+ * 同じ結果になる設定変更。どのアプリの cdkd もこれらを使わない
+ */
+const SHARED_BUCKET_WRITE_ACTIONS = [
+  's3:DeleteBucket',
+  's3:PutBucketPolicy',
+  's3:DeleteBucketPolicy',
+  's3:PutBucketAcl',
+  's3:PutBucketVersioning',
+  's3:PutLifecycleConfiguration',
+  's3:PutBucketOwnershipControls',
+  's3:PutBucketPublicAccessBlock',
+  's3:PutEncryptionConfiguration',
+  's3:PutBucketLogging',
+  's3:PutReplicationConfiguration',
+  's3:PutBucketNotification',
+  's3:PutBucketObjectLockConfiguration',
+];
+
 /** IAM ロールを作り替える操作。ロールにはタグが無いので、名前で範囲を絞る */
 const ROLE_WRITE_ACTIONS = [
   'iam:CreateRole',
@@ -150,21 +170,7 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
     new iam.PolicyStatement({
       sid: 'DenyChangingCdkdStateBucket',
       effect: iam.Effect.DENY,
-      actions: [
-        's3:DeleteBucket',
-        's3:PutBucketPolicy',
-        's3:DeleteBucketPolicy',
-        's3:PutBucketAcl',
-        's3:PutBucketVersioning',
-        's3:PutLifecycleConfiguration',
-        's3:PutBucketOwnershipControls',
-        's3:PutBucketPublicAccessBlock',
-        's3:PutEncryptionConfiguration',
-        's3:PutBucketLogging',
-        's3:PutReplicationConfiguration',
-        's3:PutBucketNotification',
-        's3:PutBucketObjectLockConfiguration',
-      ],
+      actions: SHARED_BUCKET_WRITE_ACTIONS,
       resources: [stateBucket],
     }),
     new iam.PolicyStatement({
@@ -178,20 +184,12 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
     // に置く。どちらもキーは中身のハッシュだけで
     // アプリごとの接頭辞が無いので、名前でアプリを分けられない。cdkd は資産を消さない
     // （有無を確かめて無ければ置くだけ）ので、削除と、削除と同じ結果になるバケットの設定変更
-    // （ライフサイクルでの期限切れ、バージョニングの停止、ポリシーの差し替え）を全部止める。
+    // （ライフサイクルでの期限切れ、暗号化キーの差し替え、レプリケーションなど）を、状態バケットと同じだけ止める。
     // 上書きは止められない。新しいリージョンの cdkd bootstrap はここに当たるので、人が打つ
     new iam.PolicyStatement({
       sid: 'DenyDeletingCdkdAssets',
       effect: iam.Effect.DENY,
-      actions: [
-        's3:DeleteObject',
-        's3:DeleteObjectVersion',
-        's3:DeleteBucket',
-        's3:PutLifecycleConfiguration',
-        's3:PutBucketVersioning',
-        's3:PutBucketPolicy',
-        's3:DeleteBucketPolicy',
-      ],
+      actions: ['s3:DeleteObject', 's3:DeleteObjectVersion', ...SHARED_BUCKET_WRITE_ACTIONS],
       // ARN の * は / もまたぐので、バケットとその中のオブジェクトの両方に当たる
       resources: [`arn:aws:s3:::cdkd-assets-${account}-*`, `arn:aws:s3:::cdk-hnb659fds-assets-${account}-*`],
     }),
