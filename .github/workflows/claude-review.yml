@@ -1,0 +1,99 @@
+# PR の差分を Claude にレビューさせる（セキュリティを中心に、バグと方針違反も）。
+#
+# このリポジトリは公開している。AWS Security Agent のコードレビューは公開リポジトリの PR に
+# コメントを付けられない（修正前の脆弱性を公開の場で明かさないための仕様）ため、PR ごとの
+# レビューはこちらが受け持つ。機械的な検出は GitHub 側（CodeQL・Dependabot・Secret scanning）に
+# 任せ、ここでは差分の意味を読まないと分からないもの（IAM の広さ、信頼条件、ガードレールの抜け）を見る。
+# 指摘は PR のコメントに残す。CI は赤にしない。
+#
+# 公開リポジトリなので、指摘も公開される。PR を出すのは本人と Claude だけで、指摘はマージ前に
+# 直す運用なので受け入れている。フォークからの PR には secrets が渡らず、レビューは飛ぶ。
+#
+# 課金は Claude の Max 契約枠から引く。secrets.CLAUDE_CODE_OAUTH_TOKEN を使うため、AWS の
+# Bedrock も従量課金の API キーも通らない。トークンは `claude setup-token` で作る。
+#
+# paths に自身を入れているのは、この関門を外す変更そのものを無検査で通さないため。
+# docs だけの PR では走らせない（Max の枠を無駄に使わない）。
+name: claude-review
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - 'scripts/**'
+      - '.claude/settings.json'
+      - '.github/workflows/**'
+
+# 同じ PR に続けて push したら、前のレビューは打ち切る。Max の枠を二重に使わない。
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write # 指摘をコメントで残すのに要る
+  id-token: write # claude-code-action が GitHub App トークンを OIDC で取得するのに要る
+
+jobs:
+  review:
+    name: 差分のレビュー
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+
+      # トークンが無いときは落とさずに飛ばす。設定を入れるまでの間や、secrets が渡らない
+      # フォークからの PR で、関係のない PR まで赤くならないようにする。
+      - name: トークンの有無を見る
+        id: token
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'present=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::secrets.CLAUDE_CODE_OAUTH_TOKEN が未設定のため、レビューを飛ばしました'
+          fi
+
+      # v1 タグの固定 SHA で留める（sakekasu-kakeibo の claude-review.yml と同じ版）。
+      # ここから実行されるコードが増えるので、上流が動いても中身が入れ替わらないようにする。
+      - uses: anthropics/claude-code-action@a73a99cefc6aea0126f858804cd22a7a44e11924 # v1
+        if: steps.token.outputs.present == 'true'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # prompt だけだと agent モードになり、レビューは最終メッセージに出るだけで PR に
+          # 投稿されない。track_progress でトラッキングコメントを立て、そこに結果を書き込ませる。
+          track_progress: true
+          prompt: |
+            この pull request の差分をレビューしてください。このリポジトリは 4 つのアプリ
+            （sakekasu-reinvent、sakekasu-builder、sakekasu-kakeibo、sakekasu-learning）の
+            共通基盤で、共通ログイン（Cognito）と、共通の監視・Slack 通知、各アプリの
+            デプロイ用ロールのガードレールを持っています。CLAUDE.md と README.md を前提として
+            読んでください。
+
+            セキュリティを中心に、次を見てください。
+
+            - IAM: 許可が広すぎないか（Resource が * のもの、アクションのワイルドカード）。
+              ガードレール（Deny）に抜けが無いか。削除を止めても、同じ結果になる設定変更
+              （ライフサイクル、バージョニング、ポリシーの差し替え）が通っていないか
+            - 信頼条件: GitHub Actions の OIDC の sub が main ブランチなどに絞られているか。
+              StringLike のワイルドカードが区切り文字をまたいで広がっていないか
+            - Cognito: ユーザープールを作り直す変更になっていないか（作り直すと sub が変わり、
+              4 アプリのデータとのひも付けが切れる）。データ系リソースが RETAIN か
+            - 秘密情報: 鍵やトークンをコードやログに出していないか。公開リポジトリなので、
+              AWS アカウント ID（アプリのデプロイ先以外）や個人の情報を書き込んでいないか
+            - GitHub Actions: pull_request_target を使っていないか、permissions が最小か、
+              PR のタイトルやブランチ名などの式を run に直接埋め込み、シェルに注入される形に
+              なっていないか（env を経由させているか）
+            - シェルスクリプト: 引用符の抜けによる注入、`~/.aws/config` など利用者の環境を
+              壊す操作
+
+            あわせて、ロジックのバグと CLAUDE.md の方針違反（スタックを参照でつながない、
+            crossRegionReferences を使わない、など）も見てください。
+
+            指摘は根拠とともに簡潔に、重大度（高・中・低）を付けてください。問題が無ければ
+            「指摘なし」とだけ返してください。重箱の隅は控えめに。
