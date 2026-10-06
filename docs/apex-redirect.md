@@ -70,7 +70,7 @@ that points to another CloudFront distribution.
    向け先は `DistributionDomainName`、エイリアスのゾーン ID は CloudFront の固定値 `Z2FDTNDATAQYW2`。
    www が CNAME のときは、同じ変更の中で CNAME を DELETE してから A / AAAA を CREATE する
    （同じ名前に CNAME と A は並べられない）
-3. `infra/cdk.json` に `"apexCertificateArn": "<手順 2 の ARN>"` を足す PR をマージする。
+3. `infra/cdk.json` に `"apexCertificateId": "<手順 2 の証明書の ID>"`（ARN の `certificate/` より後ろ） を足す PR をマージする。
    deploy が CloudFront に apex と www を付ける。上のエラーが出たら DNS がまだ古い。www の CNAME の
    TTL（300 秒）が切れるまで待って deploy を再実行する。`CNAMEAlreadyExists` なら Amplify 側の
    解除が届いていないので、同じく数分おいて再実行する
@@ -96,7 +96,7 @@ curl -sI https://www.sakekasu-builder.com/ | grep -iE '^(HTTP|location)'
 | 項目 | 値 |
 | --- | --- |
 | CloudFront | `E3V1KUNQL6W5RN`（`d1tb8xjqesgxv0.cloudfront.net`） |
-| 証明書 | `arn:aws:acm:us-east-1:<アプリのアカウント ID>:certificate/b40b5b6b-5b1f-47aa-8f43-d7604696a25a`（apex と www の 2 つの名前を 1 枚に入れる。CloudFront に付けられる証明書は 1 枚だけ） |
+| 証明書 | `b40b5b6b-5b1f-47aa-8f43-d7604696a25a`（cdk.json の `apexCertificateId`。ARN はアカウントと組み立てる）（apex と www の 2 つの名前を 1 枚に入れる。CloudFront に付けられる証明書は 1 枚だけ） |
 | 親ゾーン | `Z0378029DKDVAJ2VE475`（管理アカウント） |
 | 付け替える前 | apex は A（エイリアス）、www は CNAME。どちらも Amplify の `d158s516cgxf7d.cloudfront.net` |
 | 触らないもの | apex の MX（Google のメール）と TXT（Google のサイト確認）、証明書の検証用 CNAME 2 つ（自動更新に要る） |

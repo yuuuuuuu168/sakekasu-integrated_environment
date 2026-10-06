@@ -22,6 +22,16 @@ sakekasu-learning）が共通で使う基盤。アプリごとに別々だった
 
 デプロイ先は 4 アプリと同じアカウント（ap-northeast-1）。スタック名は `sakekasu-integrated-*`。
 
+公開リポジトリなので、AWS アカウント ID はリポジトリに書かない。
+
+| 使う場所 | 渡し方 |
+| --- | --- |
+| deploy ワークフローのロール ARN | リポジトリの Actions secrets `AWS_ACCOUNT_ID` |
+| CDK（証明書の ARN を組み立てる） | 環境変数 `CDK_DEFAULT_ACCOUNT`（認証情報付きなら CDK が自動で入れる）。`cdk.json` には証明書の ID だけを置く |
+| クラウドセッションの verify プロファイル | クラウド環境の Environment variables `SSO_ACCOUNT_ID` |
+
+`infra/__tests__/no-account-ids.test.ts` が、許可したダミー以外の 12 桁の数字を見張る。
+
 ## 手元で確かめる
 
 ```sh

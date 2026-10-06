@@ -12,7 +12,7 @@
 ```
 
 - デプロイとユーザーの作成は変更操作なので、このセッションからは行わない
-- スタックの間は参照でつながない。ゾーン ID や証明書の ARN は `infra/cdk.json` の context で渡す
+- スタックの間は参照でつながない。ゾーン ID や証明書の ID は `infra/cdk.json` の context で渡す
   （`crossRegionReferences` を使わない）
 - ユーザープールは作り直さない。作り直すと sub が変わり、4 アプリのデータとのひも付けが切れる
 - `theme/` と `scripts/` のフック類は sakekasu-template から同期される。直すときはテンプレート側を直す
