@@ -24,8 +24,10 @@ concurrency:
 
 env:
   AWS_REGION: ap-northeast-1
-  DEPLOY_ROLE: arn:aws:iam::232791540685:role/sakekasu-integrated-github-actions-deploy
-  CDKD_ROLE: arn:aws:iam::232791540685:role/sakekasu-integrated-github-actions-cdkd
+  # アカウント ID はリポジトリに書かず、secrets.AWS_ACCOUNT_ID から組み立てる（公開リポジトリなので）。
+  # secrets の値は Actions のログで自動的に伏せられる。未設定だとロールの引き受けで止まる
+  DEPLOY_ROLE: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/sakekasu-integrated-github-actions-deploy
+  CDKD_ROLE: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/sakekasu-integrated-github-actions-cdkd
 
 jobs:
   deploy:
