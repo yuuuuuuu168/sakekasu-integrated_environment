@@ -38,6 +38,25 @@ function context(key: string): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
+/**
+ * us-east-1 の証明書の ARN を context から作る。ARN はアカウント ID を含むので、cdk.json には
+ * 証明書の ID（`<名前>CertificateId`）だけを置き、デプロイ先のアカウントと組み立てる（公開リポジトリなので）。
+ * `-c <名前>CertificateArn=<ARN>` を渡せば、そちらを使う
+ */
+function certificateArn(name: string): string | undefined {
+  const arn = context(`${name}CertificateArn`);
+  if (arn) return arn;
+  const id = context(`${name}CertificateId`);
+  if (!id) return undefined;
+  if (!account) {
+    throw new Error(
+      `${name}CertificateId から証明書の ARN を組み立てるにはデプロイ先のアカウントが要る。` +
+        '認証情報付きで合成するか、環境変数 CDK_DEFAULT_ACCOUNT を入れる',
+    );
+  }
+  return `arn:aws:acm:us-east-1:${account}:certificate/${id}`;
+}
+
 /*
  * GitHub Actions のロールは、基盤のスタックと同じ実行に混ぜない。混ぜると
  * `cdkd deploy --all` でロールまで巻き込める。フラグを付けたときは、そのスタックだけを合成する。
@@ -61,7 +80,7 @@ function buildPlatformStacks(): void {
    *
    *   1. authZone を書く → ゾーンのスタックができる。NS を親に委任してもらう
    *   2. authHostedZoneId を書き、us-east-1 に証明書をコンソールで作る（cdkd では作らない）
-   *   3. authCertificateArn を書く → ログイン画面がその独自ドメインに移る
+   *   3. authCertificateId を書く → ログイン画面がその独自ドメインに移る
    *
    * 証明書を cdkd で作らないのは、cdkd が ACM の DNS 検証レコードを書かず、CDK が付ける
    * 検証設定（DomainValidationOptions）も ACM に渡せないため（2026-10-03 のデプロイで
@@ -73,7 +92,7 @@ function buildPlatformStacks(): void {
    */
   const authZone = context('authZone');
   const authHostedZoneId = context('authHostedZoneId');
-  const authCertificateArn = context('authCertificateArn');
+  const authCertificateArn = certificateArn('auth');
 
   if (authZone) {
     new DnsStack(app, `${PREFIX}-auth-dns`, {
@@ -112,12 +131,12 @@ function buildPlatformStacks(): void {
   /*
    * apex と www を builder の画面（sake.）へ転送する（docs/apex-redirect.md）。
    *
-   * 証明書の ARN（apexCertificateArn）が入るまでは、CloudFront の既定のドメインだけで作る。
+   * 証明書の ID（apexCertificateId）が入るまでは、CloudFront の既定のドメインだけで作る。
    * apex と www は Amplify の CloudFront に付いたままで、同じドメインは 2 つの CloudFront に
-   * 同時に付けられない。Amplify から外してから ARN を入れ、こちらに付け替える。
+   * 同時に付けられない。Amplify から外してから ID を入れ、こちらに付け替える。
    * 証明書は auth と同じくコンソールで作る（cdkd では作れない）。
    */
-  const apexCertificateArn = context('apexCertificateArn');
+  const apexCertificateArn = certificateArn('apex');
   new ApexRedirectStack(app, APEX_REDIRECT_STACK_NAME, {
     targetDomain: APEX_REDIRECT_TARGET,
     ...(apexCertificateArn

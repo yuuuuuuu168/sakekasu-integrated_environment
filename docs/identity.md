@@ -22,7 +22,7 @@
 | `sakekasu-integrated-auth-dns` | ap-northeast-1 | context `authZone` | `auth.sakekasu-builder.com` のゾーン |
 | `sakekasu-integrated-identity` | ap-northeast-1 | いつも | ユーザープール、ドメイン、アプリクライアント |
 
-スタックの間は参照でつながない。ゾーン ID と証明書の ARN は `cdk.json` に書いて渡す。
+スタックの間は参照でつながない。ゾーン ID と証明書の ID は `cdk.json` に書いて渡す（証明書の ARN はアカウント ID を含むので、ID だけを書き、合成時にアカウントと組み立てる）。
 ログイン画面の証明書（us-east-1）は cdkd では作らず、コンソールで作る（下の手順の 4）。
 
 ## デプロイ済みの値
@@ -39,7 +39,7 @@
 | クライアント ID: kakeibo | `2bsth1alaafgp1utsq3evraib5` |
 | クライアント ID: learning | `290il92ijts07ap3unkae5ql8o` |
 | `auth.sakekasu-builder.com` のゾーン ID | `Z05756913NB3G0RNTABHH`（2026-10-03 に親から委任済み） |
-| ログイン画面の証明書（us-east-1） | `arn:aws:acm:us-east-1:<アプリのアカウント ID>:certificate/67bb48e9-8b29-4a94-8753-af9877847205`（2026-10-03 にコンソールで作成） |
+| ログイン画面の証明書（us-east-1） | `67bb48e9-8b29-4a94-8753-af9877847205`（cdk.json の `authCertificateId`。ARN はアカウントと組み立てる）（2026-10-03 にコンソールで作成） |
 
 ## 独自ドメインを有効にする順番
 
@@ -57,7 +57,7 @@
      `auth.sakekasu-builder.com` のゾーンに検証用の CNAME が入り、数分で「発行済み」になる
    - cdkd で作らないのは、cdkd が検証レコードを書かず、CDK の検証設定も ACM に渡せないため
      （2026-10-03 のデプロイで失敗した）。一度作れば ACM が自動で更新する
-5. `cdk.json` に `authCertificateArn`（4 の証明書の ARN）を書いてデプロイする。
+5. `cdk.json` に `authCertificateId`（4 の証明書の ARN の末尾、`certificate/` より後ろの ID）を書いてデプロイする。
    ログイン画面が `https://auth.sakekasu-builder.com` に移る
 
 Cognito の独自ドメインは、親のドメイン（`sakekasu-builder.com`）に A レコードがあることを求める。
