@@ -50,11 +50,11 @@ describe('転送の関数', () => {
     expect(TOP).toContain('パスキーでログイン');
   });
 
-  it('/apps は code が無ければ共通ログインへ送る', () => {
+  it('/apps は code が無ければ共通ログインへ送る（ログイン画面は日本語）', () => {
     const res = runRedirect({ uri: '/apps', querystring: {} });
     expect(res.statusCode).toBe(302);
     expect(res.headers.location.value).toBe(
-      'https://auth.example.com/oauth2/authorize?client_id=portalclient123&response_type=code&scope=openid' +
+      'https://auth.example.com/oauth2/authorize?client_id=portalclient123&response_type=code&scope=openid&lang=ja' +
         '&redirect_uri=https%3A%2F%2Fexample.com%2Fapps',
     );
     expect(res.headers['cache-control'].value).toBe('no-store');
