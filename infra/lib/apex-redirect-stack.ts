@@ -46,7 +46,8 @@ function jsString(value: string): string {
  * - `/`: 入口の表紙。「パスキーでログイン」は /apps へ行く
  * - `/apps`: 共通ログインから戻ったあとのアプリの一覧。`code` が無ければ共通ログイン
  *   （/oauth2/authorize）へ 302 で送る。共通ログインにセッションが残っていれば、入力なしで戻ってくる。
- *   `error` 付きで戻ったら表紙へ。コードは交換しない（一覧はリンクを並べるだけで、各アプリが
+ *   ログイン画面は日本語で出す（lang=ja）。Cognito はこの指定をブラウザのクッキーに残すので、
+ *   各アプリから開いたログイン画面も以後は日本語になる。`error` 付きで戻ったら表紙へ。コードは交換しない（一覧はリンクを並べるだけで、各アプリが
  *   自分でログインを確かめる。ここは流れを作るためで、守りではない）
  * - `/logout`: 共通ログインのセッションを消して（/logout）表紙へ戻る
  * - それ以外: パスとクエリを保ったまま転送先へ 301。builder を apex で使っていた頃のブックマークを生かす
@@ -61,7 +62,7 @@ function jsString(value: string): string {
 export function redirectFunctionCode(targetDomain: string, parts: PortalParts, login?: PortalLogin): string {
   const authorize = login?.clientId
     ? `https://${login.authDomain}/oauth2/authorize?client_id=${encodeURIComponent(login.clientId)}` +
-      `&response_type=code&scope=openid&redirect_uri=${encodeURIComponent(`${login.origin}/apps`)}`
+      `&response_type=code&scope=openid&lang=ja&redirect_uri=${encodeURIComponent(`${login.origin}/apps`)}`
     : '';
   const logout = login?.clientId
     ? `https://${login.authDomain}/logout?client_id=${encodeURIComponent(login.clientId)}` +
