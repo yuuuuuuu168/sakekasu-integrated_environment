@@ -137,14 +137,9 @@ export class IdentityStack extends cdk.Stack {
        * クライアント ID は画面に載るので、誰でもログイン画面を飛ばしてパスワードを試せる状態だった。
        * 各アプリはマネージドログインの認可コードだけを使うので、ここを閉じても動きは変わらない
        * （認可コードの交換は /oauth2/token で、この設定の対象外）。更新は Amplify が使うので残す。
-       *
-       * ALLOW_USER_AUTH（選択式のログイン）は、パスキーを入れる前の切り分けで足している。
-       * これだけでパスワード + TOTP が通るかを確かめる（docs/identity.md の「パスキーを試す」）。
-       * ログイン画面を通さない API からも使えるが、MFA が必須なのでパスワードだけでは入れない。
        */
       (client.node.defaultChild as cognito.CfnUserPoolClient).explicitAuthFlows = [
         'ALLOW_REFRESH_TOKEN_AUTH',
-        'ALLOW_USER_AUTH',
       ];
 
       // ログイン画面の色は 4 アプリと同じ共通テーマ（藍と金）から作る。画像は Cognito の既定を使う

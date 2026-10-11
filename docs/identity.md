@@ -9,7 +9,7 @@
 - TOTP の MFA を必須にする。パスワードは 16 文字以上（英大文字・英小文字・数字を含む）
 - ログイン画面は Cognito のマネージドログインを `auth.sakekasu-builder.com` で出す
 - 各アプリはアプリクライアントを 1 つずつ持ち、ログイン画面へリダイレクトする（認可コード + PKCE）
-- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）と選択式のログイン（`ALLOW_USER_AUTH`、パスキーの切り分け中）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
+- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
 - リフレッシュトークンは 90 日。iPhone のホーム画面に置いた Web アプリはアプリごと（Safari とも別）にセッションが分かれるので、入り直しを減らすため長めにしている
 - ログイン画面のドメインにセッションが残るので、1 つのアプリでログインすれば、
   ほかのアプリは入力なしで入れる
@@ -162,9 +162,13 @@ MFA として数える設定（`WebAuthnFactorConfiguration` = `MULTI_FACTOR_WIT
 
 | 段階 | 足すもの | 結果 |
 | --- | --- | --- |
-| 1 | クライアントに `ALLOW_USER_AUTH`（最初の認証はパスワードだけ） | 確認待ち |
-| 2 | 最初の認証にパスキー、RP ID、本人確認 `required`（MFA としては数えない） | |
-| 3 | `WebAuthnFactorConfiguration` = `MULTI_FACTOR_WITH_USER_VERIFICATION` | |
+| 1 | クライアントに `ALLOW_USER_AUTH`（最初の認証はパスワードだけ） | **通らない**。1 回目と同じく `verifyPassword_POST` が 400 `Unexpected exception`。戻した |
+| 2 | 最初の認証にパスキー、RP ID、本人確認 `required`（MFA としては数えない） | 未実施 |
+| 3 | `WebAuthnFactorConfiguration` = `MULTI_FACTOR_WITH_USER_VERIFICATION` | 未実施 |
+
+段階 1 で、パスキーの設定が無くても選択式のログイン（`ALLOW_USER_AUTH`）だけで同じ失敗が出た。
+原因はパスキーではなく、このユーザープールでマネージドログインが選択式になったときのパスワードの確認にある。
+同じ端末・同じパスワードで、従来の 1 画面のログイン（メールとパスワード → TOTP）は直前・直後とも通っている。
 
 ## まだやっていないこと
 
