@@ -54,7 +54,8 @@ function vars(c: ThemeColors): string {
  * - 一覧（/apps）: 共通ログインから戻ったあとの 4 アプリのボタンとログアウト（/logout）
  *
  * 2 枚は CSS を共有する。関数のコードの大きさを抑えるため、ページは head・css・body に分けて持ち、
- * 関数の中でつなぐ（page()）。色は共通テーマから合成のたびに作り、ライト・ダークは OS に合わせる。
+ * 関数の中でつなぐ（page()）。色は共通テーマのダークから合成のたびに作る。OS の設定によらず黒に固定する
+ * （共通ログインの画面と同じ。利用者の指定）。
  * 外のファイルもスクリプトも使わない（CSP で閉じている）。青海波は CSS のグラデーションで描く。
  */
 export interface PortalParts {
@@ -70,11 +71,10 @@ export function buildPortalParts(theme: { light: ThemeColors; dark: ThemeColors 
   }
   // 青海波。半円の重なりを 2 段ずらして並べる。線は金を薄く
   const wave = (bg: string) =>
-    `radial-gradient(circle at 50% 100%,${bg} 18%,#${theme.light['gold-line']}40 19% 23%,${bg} 24% 40%,` +
-    `#${theme.light['gold-line']}40 41% 45%,${bg} 46% 62%,#${theme.light['gold-line']}40 63% 67%,${bg} 68% 70%,transparent 71%)`;
+    `radial-gradient(circle at 50% 100%,${bg} 18%,#${theme.dark['gold-line']}40 19% 23%,${bg} 24% 40%,` +
+    `#${theme.dark['gold-line']}40 41% 45%,${bg} 46% 62%,#${theme.dark['gold-line']}40 63% 67%,${bg} 68% 70%,transparent 71%)`;
   const css =
-    `:root{color-scheme:light dark;${vars(theme.light)}}` +
-    `@media (prefers-color-scheme:dark){:root{${vars(theme.dark)}}}` +
+    `:root{color-scheme:dark;${vars(theme.dark)}}` +
     '*{box-sizing:border-box}' +
     `body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:${JA_SANS}}` +
     'a{color:inherit;text-decoration:none}' +
@@ -113,8 +113,7 @@ export function buildPortalParts(theme: { light: ThemeColors; dark: ThemeColors 
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="robots" content="noindex">' +
     '<meta name="apple-mobile-web-app-title" content="sakekasu">' +
-    `<meta name="theme-color" content="#${theme.light.bg}" media="(prefers-color-scheme: light)">` +
-    `<meta name="theme-color" content="#${theme.dark.bg}" media="(prefers-color-scheme: dark)">` +
+    `<meta name="theme-color" content="#${theme.dark.bg}">` +
     '<title>sakekasu</title>';
   const chips = apps.map((app) => `<li>${escapeHtml(app.icon)} ${escapeHtml(app.label)}</li>`).join('');
   const top =

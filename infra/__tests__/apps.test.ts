@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseApps } from '../lib/apps';
 
@@ -36,5 +37,16 @@ describe('parseApps', () => {
 
   it('URL の一覧が空なら止める', () => {
     expect(() => parseApps([{ ...ok, callbackUrls: [] }])).toThrow(/1 つ以上/);
+  });
+
+  // 各アプリでサインアウトしたら入口の表紙（https://sakekasu-builder.com/）へ戻す。
+  // Cognito は登録していない logout_uri を拒むので、4 アプリともここを許しておく
+  it('cdk.json の 4 アプリは、サインアウト後に入口の表紙へ戻れる', () => {
+    const cdkJson = JSON.parse(readFileSync(new URL('../cdk.json', import.meta.url), 'utf8'));
+    const apps = parseApps(cdkJson.context.apps);
+    for (const name of ['builder', 'kakeibo', 'learning', 'reinvent']) {
+      const app = apps.find((a) => a.name === name);
+      expect(app?.logoutUrls).toContain('https://sakekasu-builder.com/');
+    }
   });
 });

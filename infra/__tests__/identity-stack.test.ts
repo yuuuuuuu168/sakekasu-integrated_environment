@@ -87,7 +87,7 @@ describe('IdentityStack: アプリクライアント', () => {
     for (const b of Object.values(brandings)) {
       expect(b.Properties.UseCognitoProvidedValues).toBe(false);
       expect(b.Properties.Settings.components.primaryButton.lightMode.defaults.backgroundColor).toBe('1b365dff');
-      expect(b.Properties.Settings.categories.global.colorSchemeMode).toBe('DYNAMIC');
+      expect(b.Properties.Settings.categories.global.colorSchemeMode).toBe('DARK');
     }
   });
 

@@ -83,6 +83,9 @@ aws cognito-idp admin-create-user \
 `cdk.json` の `apps` に足す。戻り先（`callbackUrls`、`logoutUrls`）は、アプリが Cognito に渡す URL と
 完全に一致させる（末尾の `/` も区別される）。https か `http://localhost` だけを受け付ける。
 
+4 アプリの `logoutUrls` には入口の表紙 `https://sakekasu-builder.com/` も入れてある。各アプリでサインアウトしたら、
+アプリのサインイン画面ではなく入口の表紙へ戻すため（アプリは `logout_uri` にこれを渡す）。
+
 ## デプロイ
 
 main へのマージで `.github/workflows/deploy.yml` が cdkd で出す。ロールは 2 つある。
@@ -140,7 +143,7 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
 ログイン画面の色は、4 アプリと同じ共通テーマ（`theme/sakekasu-theme.css`）から合成のたびに作る
 （`infra/lib/login-branding.ts`）。テーマの色を直せば、次のデプロイでログイン画面も変わる。
 
-- ライト・ダークは利用者の OS の設定に合わせる（4 アプリの画面と同じ）
+- 色はダークに固定する（`colorSchemeMode: DARK`）。DYNAMIC だと OS の設定や時刻で白い画面が出たため、利用者の指定で黒に揃えた
 - Cognito の既定の背景の模様は出さず、テーマの地の色だけにする
 - フォント・角丸・認証アプリの絵などの画像は Cognito の既定のまま
 - 設定の形は Cognito の既定（`infra/__tests__/fixtures/cognito-default-branding-settings.json`、
