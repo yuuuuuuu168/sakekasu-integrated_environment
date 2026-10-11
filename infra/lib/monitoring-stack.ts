@@ -13,7 +13,13 @@ import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import type { Construct } from 'constructs';
 import type { HealthCheckTarget } from './health-checks';
 import { lambdaLogGroup } from './log-retention';
-import { ALERT_TOPIC_NAME, APP_ROLE_PREFIX, PREFIX, SLACK_WEBHOOK_PARAMETER_NAME } from './names';
+import {
+  ALERT_TOPIC_NAME,
+  APP_ROLE_PREFIX,
+  DEVOPS_AGENT_WEBHOOK_PARAMETER_NAME,
+  PREFIX,
+  SLACK_WEBHOOK_PARAMETER_NAME,
+} from './names';
 import { applyRoleBoundary } from './role-boundary';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
@@ -33,14 +39,15 @@ export interface MonitoringStackProps extends cdk.StackProps {
  * 4 アプリ共通の監視と Slack 通知（docs/monitoring.md）。作りは sakekasu-builder の
  * lib/monitoring-stack.ts から、共通基盤が持つ分だけを写した。
  *
- * 共通基盤が持つのは次の 3 つだけ。アプリごとのアラーム（Lambda のエラーなど）は各アプリが
+ * 共通基盤が持つのは次の 4 つだけ。アプリごとのアラーム（Lambda のエラーなど）は各アプリが
  * 自分のリポジトリで持ち、ここのトピックへ送る。
  *
  *   - 通知の経路: SNS トピック `sakekasu-integrated-alerts` → Slack 通知 Lambda → Slack
+ *   - 自動調査: 同じトピック → 転送 Lambda → AWS DevOps Agent の Webhook
  *   - AWS Health: 障害と予定された変更（us-east-1 のグローバル分は HealthGlobalStack が転送してくる）
  *   - 全サイトの死活監視: 5 分ごとの外形監視と、その監視の監視
  *
- * Slack の Webhook URL はリポジトリに置けないので、人が手で SSM に登録したものを名前で読む。
+ * Slack と DevOps Agent の Webhook はリポジトリに置けないので、人が手で SSM に登録したものを名前で読む。
  */
 export class MonitoringStack extends cdk.Stack {
   public readonly alertTopic: sns.Topic;
@@ -134,6 +141,60 @@ export class MonitoringStack extends cdk.Stack {
         'Slack への通知に失敗しています。アラートが届かない状態です。' +
         'SSM の Webhook URL が登録されているか、Slack 側で無効になっていないかを確認してください',
       metric: slackNotifier.metricErrors({ period: cdk.Duration.minutes(5), statistic: 'Sum' }),
+      threshold: 1,
+      evaluationPeriods: 1,
+    });
+
+    // --- DevOps Agent への転送（自動調査）---
+
+    /*
+     * 4 アプリのアラームが鳴ったら、AWS DevOps Agent に調査を依頼する（docs/monitoring.md の
+     * 「DevOps Agent への転送」）。Slack 通知とは別の購読者として同じトピックを受けるだけなので、
+     * 転送が止まってもアラートは Slack に届く。
+     *
+     * 作りは sakekasu-builder の lib/devops-agent-stack.ts の転送 Lambda を写した。builder だけが
+     * 自分のトピックに転送を付けていて、他の 3 アプリのアラームは調査に回っていなかった（2026-10-11）。
+     * 調査に回すのは ALARM への遷移と AWS Health の障害（issue）だけ。判定は lambda/devops-agent-webhook にある。
+     *
+     * 調査に使うクロスアカウントロール（sakekasu-dev-devops-agent-monitoring）は builder に残している。
+     * Agent Space がアカウント全体を読むためのロールで、AWS 管理ポリシー AIDevOpsAgentAccessPolicy と
+     * iam:CreateServiceLinkedRole を持つ。このリポジトリのロールの境界（lib/role-boundary.ts）は許可リストで
+     * iam:* を拒否しているので、そのままでは作れない
+     */
+    const devopsAgentSelfAlarmName = `${PREFIX}-devops-agent-webhook-failure`;
+    const devopsAgentWebhook = this.lambda('DevOpsAgentWebhook', 'devops-agent-webhook', {
+      timeout: cdk.Duration.seconds(20),
+      // 同時に走る本数を抑える。エージェントは秒課金なので、アラームが一斉に鳴ったときに調査が
+      // 同時に立ち上がるのを避けたい。SNS からの呼び出しは非同期なので、絞っても捨てられず順番待ちになる。
+      // 同時に始まる本数の話であって、調査の総数の上限ではない
+      reservedConcurrentExecutions: 2,
+      environment: {
+        WEBHOOK_PARAMETER_NAME: DEVOPS_AGENT_WEBHOOK_PARAMETER_NAME,
+        // 転送の失敗を転送し返して調査を起こさないよう、自分の失敗アラームは捨てる
+        SELF_ALARM_NAME: devopsAgentSelfAlarmName,
+      },
+    });
+
+    // 設定は手で登録したパラメータ 1 つだけ読める。復号は Slack の Webhook URL と同じく AWS 管理キー
+    devopsAgentWebhook.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'ReadDevOpsAgentWebhook',
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter${DEVOPS_AGENT_WEBHOOK_PARAMETER_NAME}`,
+        ],
+      }),
+    );
+
+    this.alertTopic.addSubscription(new subscriptions.LambdaSubscription(devopsAgentWebhook));
+
+    // 転送が止まると、調査が始まらないまま静かに機能を失う。ここも監視する
+    this.addAlarm('DevOpsAgentWebhookFailure', {
+      alarmName: devopsAgentSelfAlarmName,
+      description:
+        'DevOps Agent への調査依頼の転送に失敗しています。アラートは Slack に届きますが、自動調査は始まりません。' +
+        'SSM の Webhook の設定が登録されているか、Agent Space の Webhook が無効になっていないかを確認してください',
+      metric: devopsAgentWebhook.metricErrors({ period: cdk.Duration.minutes(5), statistic: 'Sum' }),
       threshold: 1,
       evaluationPeriods: 1,
     });
@@ -264,6 +325,10 @@ export class MonitoringStack extends cdk.Stack {
       value: SLACK_WEBHOOK_PARAMETER_NAME,
       description: 'Slack の Webhook URL を置く SSM パラメータ（SecureString。手で登録する）',
     });
+    new cdk.CfnOutput(this, 'DevOpsAgentWebhookParameterName', {
+      value: DEVOPS_AGENT_WEBHOOK_PARAMETER_NAME,
+      description: 'DevOps Agent の Webhook の URL と署名鍵を置く SSM パラメータ（SecureString。手で登録する）',
+    });
   }
 
   /**
@@ -278,7 +343,7 @@ export class MonitoringStack extends cdk.Stack {
   private lambda(
     id: string,
     slug: string,
-    props: Pick<NodejsFunctionProps, 'timeout' | 'environment'>,
+    props: Pick<NodejsFunctionProps, 'timeout' | 'environment' | 'reservedConcurrentExecutions'>,
   ): NodejsFunction {
     const functionName = `${PREFIX}-${slug}`;
     const logGroup = lambdaLogGroup(this, `${id}LogGroup`, functionName);
@@ -301,7 +366,7 @@ export class MonitoringStack extends cdk.Stack {
       ...props,
       bundling: {
         // AWS SDK（client-ssm、client-cloudwatch）はランタイム同梱のものを使い、バンドルに入れない。
-        // 使う API は GetParameter と PutMetricData だけで、同梱の版で足りる
+        // 使う API は GetParameter と PutMetricData だけで、同梱の版で足りる（DevOps Agent への転送は fetch）
         externalModules: ['@aws-sdk/*'],
         // テストやローカルの合成で、実行のたびにハッシュが変わらないようにする
         sourceMap: false,

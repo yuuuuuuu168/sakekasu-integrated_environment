@@ -8,7 +8,7 @@
 
 | だれが | 持つもの |
 | --- | --- |
-| 共通基盤（このリポジトリ） | 通知の経路（トピックと Slack 通知 Lambda）、AWS Health、全サイトの死活監視 |
+| 共通基盤（このリポジトリ） | 通知の経路（トピックと Slack 通知 Lambda）、DevOps Agent への転送、AWS Health、全サイトの死活監視 |
 | 各アプリ | 自分のアラーム（Lambda のエラー、API の 5xx など）。送り先を共通のトピックにする |
 
 AWS Health はアカウント全体の話なので、共通基盤だけが持つ。builder にも Health のルール
@@ -21,11 +21,11 @@ AWS Health はアカウント全体の話なので、共通基盤だけが持つ
  各アプリのアラーム ───────────────┐  (ALARM / OK)
  共通基盤のアラーム ───────────────┤
                                   ▼
- AWS Health (ap-northeast-1) ─▶ EventBridge ─▶ SNS: sakekasu-integrated-alerts ─▶ Lambda: sakekasu-integrated-slack-notifier ─▶ Slack
-                                  ▲   ルール: sakekasu-integrated-aws-health                 │ Webhook URL は SSM から読む
- AWS Health (us-east-1) ─▶ EventBridge ─┘                                               └ /sakekasu-integrated/monitoring/slack-webhook-url
-   グローバルサービス分      ルール: sakekasu-integrated-aws-health-global
-   （IAM、CloudFront など）  ap-northeast-1 の default バスへ転送
+ AWS Health (ap-northeast-1) ─▶ EventBridge ─▶ SNS: sakekasu-integrated-alerts ─┬▶ Lambda: sakekasu-integrated-slack-notifier ─▶ Slack
+                                  ▲   ルール: sakekasu-integrated-aws-health     │    Webhook URL は SSM から読む（/sakekasu-integrated/monitoring/slack-webhook-url）
+ AWS Health (us-east-1) ─▶ EventBridge ─┘                                     │
+   グローバルサービス分      ルール: sakekasu-integrated-aws-health-global       └▶ Lambda: sakekasu-integrated-devops-agent-webhook ─▶ DevOps Agent ─▶ 自動調査
+   （IAM、CloudFront など）  ap-northeast-1 の default バスへ転送                     Webhook の URL と鍵は SSM から読む（/sakekasu-integrated/devops-agent/webhook）
 
  EventBridge (5 分ごと) ─▶ Lambda: sakekasu-integrated-health-check ─▶ メトリクス sakekasu-integrated-monitoring/HealthCheckFailed
                              各サイトを叩く                          └▶ アラーム sakekasu-integrated-health-check-<名前>（5 分 × 2 回）
@@ -44,6 +44,7 @@ AWS Health はアカウント全体の話なので、共通基盤だけが持つ
 | --- | --- |
 | `sakekasu-integrated-health-check-<名前>` | 外形監視で期待した応答が 5 分 × 2 回続けて返らない |
 | `sakekasu-integrated-slack-notifier-failure` | Slack への送信に失敗した（Webhook の未登録・失効など） |
+| `sakekasu-integrated-devops-agent-webhook-failure` | DevOps Agent への調査依頼の転送に失敗した（SSM の設定の未登録、Webhook の失効など）。転送 Lambda はこのアラーム自身は転送しない |
 | `sakekasu-integrated-watcher-failure-health-check` | 外形監視の Lambda がエラーで落ちた（1 時間に 1 回以上） |
 | `sakekasu-integrated-watcher-silent-health-check` | 外形監視が 1 時間 1 回も動いていない（スケジュールの停止など） |
 
@@ -205,6 +206,97 @@ aws cloudwatch describe-alarm-history --alarm-name <アラーム名> \
 `aws cloudwatch set-alarm-state --alarm-name <名前> --state-value ALARM --state-reason test` を打つと、
 実際に Slack に届く（次の評価で元の状態に戻り、OK も届く）。
 
+## DevOps Agent への転送
+
+トピックに届いたものを AWS DevOps Agent の Webhook に投げ、調査を自動で始めさせる。エージェントはログ・メトリクス・
+デプロイ履歴を突き合わせて根本原因と緩和策をまとめ、Slack の双方向用チャンネルに投稿する。
+Agent Space（運用ツール用アカウントの `sakekasu`）、Slack と GitHub の連携、調査用のクロスアカウントロールは
+sakekasu-builder の [docs/devops-agent.md](https://github.com/yuuuuuuu168/sakekasu-builder/blob/main/docs/devops-agent.md) にある。
+
+転送 Lambda は builder の `infra/lambda/devops-agent-webhook` を写したもの。2026-10-11 まで転送は builder だけが
+自分のトピック（`dev-sakekasu-alerts`）に付けていて、kakeibo、learning、reinvent と共通基盤のアラーム（57 本）は
+Slack に届くだけで調査に回っていなかった。ここに移して、このトピックに送る全アラームを対象にした。
+builder のアラームもこのトピックへ移す（builder 側の PR）。
+
+### 調査に回すもの
+
+エージェントは秒課金（$0.0083/秒、約 $30/時）なので、鳴ったもの全部は投げない。
+
+- CloudWatch アラームが `ALARM` に変わったとき。復旧（`OK`）とデータ不足では投げない
+- AWS Health のうち `issue`（実際の障害）だけ。予定された変更は Slack にだけ届く
+- 転送 Lambda 自身の失敗アラーム（`sakekasu-integrated-devops-agent-webhook-failure`）は捨てる
+- 同時に立ち上がる調査は 2 本まで（予約同時実行数 2。あふれた分は捨てずに順番待ちになる）
+
+どのアプリのものかはアラーム名の接頭辞から引く（Slack 通知と同じ `app-label.ts`）。DevOps Agent 側のサービス名は
+リポジトリ名（`sakekasu-kakeibo` など）にし、共通基盤のアラーム・AWS Health・接頭辞に当たらないものは
+`sakekasu-integrated` にする。
+
+優先度は人が「今すぐ見るべきか」を判断するためのもの。エージェントの調査の深さは変わらない。
+
+| 優先度 | 対象 |
+| --- | --- |
+| CRITICAL | サイトが開けない・ログインできない（`sakekasu-integrated-health-check-*`、builder の `health-check-frontend`）、API の 5xx（`api-5xx`、`appsync-5xx`） |
+| MEDIUM | 利用者から見えないか、代わりの経路で動いているもの（`slack-notifier-failure`、`watcher-*`、`image-delete-fail`、LLM の `fallback`、`invocations-high`） |
+| HIGH | 上のどちらにも当たらないもの（Lambda のエラー、同期の停止、スロットルなど） |
+
+MEDIUM を CRITICAL より先に見る。`sakekasu-integrated-watcher-silent-health-check` のように、監視の停止を表すアラームが
+名前に `health-check` を含むため。壊れているのは監視の側なので MEDIUM が正しい。
+
+### 設定を登録する（最初に一度だけ）
+
+Webhook の URL と署名鍵（HMAC）はリポジトリに置けないので、SSM の SecureString に JSON で手で入れる。
+Agent Space は builder と同じなので、builder が Secrets Manager に入れている値（`dev-sakekasu/devops-agent/webhook`）を
+そのまま写せばよい。Secrets Manager にしないのは、このリポジトリのロールの境界が `/sakekasu-integrated/*` の
+`ssm:GetParameter` だけを許しているため（Slack の Webhook URL と同じ置き方）。
+書き込みの権限がある認証情報で、Mac から打つ。
+
+```sh
+aws secretsmanager get-secret-value --region ap-northeast-1 \
+  --secret-id dev-sakekasu/devops-agent/webhook --query SecretString --output text > /tmp/devops-agent-webhook.json
+
+aws ssm put-parameter --region ap-northeast-1 \
+  --name /sakekasu-integrated/devops-agent/webhook \
+  --type SecureString \
+  --value file:///tmp/devops-agent-webhook.json
+
+rm /tmp/devops-agent-webhook.json
+```
+
+中身は `{"webhookUrl":"https://event-ai.ap-northeast-1.api.aws/webhook/generic/<id>","signingSecret":"<鍵>"}`。
+送り先は `*.api.aws` しか許していない（内部向けのアドレスや他のドメインへ本文を送らないため）。
+
+登録する前にデプロイしても壊れはしないが、アラームが鳴るたびに転送 Lambda が落ち、
+`sakekasu-integrated-devops-agent-webhook-failure` が鳴る。先に登録しておく。
+鍵を入れ替えたときは、温まった実行環境も 5 分以内に読み直す。
+
+### 動作を確かめる
+
+Slack を鳴らさずに転送だけ試すなら、書き込みの権限がある認証情報で Lambda を直接呼ぶ。
+
+```sh
+aws lambda invoke --region ap-northeast-1 \
+  --function-name sakekasu-integrated-devops-agent-webhook \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"Records":[{"Sns":{"Message":"{\"AlarmName\":\"sakekasu-integrated-TEST-devops-agent\",\"AlarmDescription\":\"[TEST] 疎通確認です。調査は不要です\",\"NewStateValue\":\"ALARM\",\"NewStateReason\":\"[TEST] Webhook の疎通確認\"}","Timestamp":"2026-10-11T00:00:00.000Z"}}]}' \
+  /dev/stdout
+```
+
+ログに `調査を依頼しました: ...` が出て、DevOps Agent の Web アプリに `CloudWatch アラーム: sakekasu-integrated-TEST-devops-agent`
+の調査が立てば通っている。進行中の調査と内容が近いと、新しい調査は立たずに既存の調査へ `LINKED` として合流する
+（builder の docs/devops-agent.md の手順 8）。調査の一覧は読み取り専用のプロファイルでも見られる。
+
+```sh
+aws devops-agent list-backlog-tasks --agent-space-id <Agent Space ID> --profile verify-ops --region ap-northeast-1
+```
+
+### 調査用のロールは builder に残している
+
+Agent Space がアプリのアカウントを読むためのクロスアカウントロール（`sakekasu-dev-devops-agent-monitoring`）も
+本来はアカウント全体のもので、共通基盤が持つのが筋。ただしこのロールは AWS 管理ポリシー
+`AIDevOpsAgentAccessPolicy`（読み取りの広い権限）と `iam:CreateServiceLinkedRole` を持つ。このリポジトリのロールの境界は
+許可リストで `iam:*` を拒否しているので、移すには境界の例外か別の境界が要り、Agent Space の登録もコンソールで差し替えになる。
+転送ほど急ぐものでもないので、今回は移していない。
+
 ## 外形監視の対象を足す
 
 `infra/cdk.json` の context `healthChecks` に足す。合成のときに `infra/lib/health-checks.ts` の
@@ -254,6 +346,7 @@ main へのマージで `.github/workflows/deploy.yml` が cdkd で出す。cdkd
 Permissions Boundary `sakekasu-integrated-role-boundary` が付いたロールだけ。境界の中身は
 `infra/lib/role-boundary.ts` にあり、監視の Lambda と転送に要る操作（ログの書き込み、SSM の読み取り、
 メトリクスの書き込み、SNS への publish、イベントの転送、X-Ray）しか入っていない。
+DevOps Agent への転送は Webhook への HTTPS（AWS の API ではない）と SSM の読み取りだけなので、境界は変えていない。
 Lambda に新しい操作を足すときは、境界にも足さないと実行時に AccessDenied になる。
 
 ### cdkd のアセットの置き場所
@@ -277,10 +370,11 @@ ap-northeast-1 の料金（2026-10 時点）で月 5 ドル前後。
 
 | もの | 数 | 月額 |
 | --- | --- | --- |
-| CloudWatch アラーム（標準） | 9（外形監視 6、Slack 通知 1、監視の監視 2） | 約 0.9 ドル |
+| CloudWatch アラーム（標準） | 10（外形監視 6、Slack 通知 1、DevOps Agent への転送 1、監視の監視 2） | 約 1.0 ドル |
 | カスタムメトリクス | 12（外形監視の対象ごとに失敗と応答時間） | 約 3.6 ドル（アカウントの無料枠 10 個が残っていれば減る） |
 | PutMetricData | 月 8,640 回 | 約 0.1 ドル |
-| Lambda | 外形監視 月 8,640 回（数秒ずつ）、Slack 通知は届いた分だけ | 無料枠に収まる |
+| Lambda | 外形監視 月 8,640 回（数秒ずつ）、Slack 通知と DevOps Agent への転送は届いた分だけ | 無料枠に収まる |
+| DevOps Agent | 調査した時間だけ $0.0083/秒（約 $30/時）。運用ツール用アカウントに課金される | 鳴らなければ 0。月 10 回・1 回 8 分なら約 40 ドル |
 | SNS、EventBridge、AWS Health | Lambda への配信、ルール、Health のイベント | 0 |
 | CloudWatch Logs | 30 日で消える。量は小さい | ほぼ 0 |
 
