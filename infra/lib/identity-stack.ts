@@ -31,6 +31,8 @@ export const PASSWORD_MIN_LENGTH = 16;
  *
  * - 利用者は本人だけ。新規登録は受け付けず、ユーザーは管理者が CLI で作る
  * - TOTP の MFA を必須にする（SMS とメールは使わない）
+ * - パスキー（1Password など。Face ID などの本人確認つき）でも入れる。本人確認つきの
+ *   パスキーは、それだけで MFA を満たす。パスワード + TOTP は予備として残す
  * - ログイン画面は Cognito のマネージドログインを共通のドメインで出す。
  *   各アプリはそこへリダイレクトする（認可コード + PKCE）。ログイン画面のドメインに
  *   セッションが残るので、1 つのアプリでログインすれば、ほかのアプリは入力なしで入れる
@@ -63,10 +65,22 @@ export class IdentityStack extends cdk.Stack {
       },
       mfa: cognito.Mfa.REQUIRED,
       mfaSecondFactor: { otp: true, sms: false, email: false },
+      // 最初の認証はパスワードかパスキー。パスキーは本人確認（Face ID など）つきだけを受け付ける
+      signInPolicy: { allowedFirstAuthFactors: { password: true, passkey: true } },
+      // マネージドログインで使うときは、ログイン画面のドメインと一致させる決まり
+      passkeyRelyingPartyId:
+        props.customDomain?.domainName ??
+        `${props.cognitoDomainPrefix}.auth.${this.region}.amazoncognito.com`,
+      passkeyUserVerification: cognito.PasskeyUserVerification.REQUIRED,
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       deletionProtection: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
+
+    // 本人確認つきのパスキーを MFA として数える。これが無いと MFA 必須のプールではパスキーで入れない。
+    // L2 に項目が無いので L1 で入れる
+    (this.userPool.node.defaultChild as cognito.CfnUserPool).webAuthnFactorConfiguration =
+      'MULTI_FACTOR_WITH_USER_VERIFICATION';
 
     const domain = props.customDomain
       ? this.userPool.addDomain('Domain', {
@@ -121,20 +135,26 @@ export class IdentityStack extends cdk.Stack {
         enableTokenRevocation: true,
         accessTokenValidity: cdk.Duration.hours(1),
         idTokenValidity: cdk.Duration.hours(1),
-        refreshTokenValidity: cdk.Duration.days(30),
+        // iPhone のホーム画面のアプリはアプリごとにセッションが分かれるので、入り直しを減らす
+        refreshTokenValidity: cdk.Duration.days(90),
       });
 
       /*
-       * ログイン画面を通さないログイン（SRP やカスタム認証）は閉じ、トークンの更新だけを許す。
+       * ログイン画面を通さないログイン（SRP やカスタム認証）は閉じ、トークンの更新と、
+       * 選択式のログイン（ALLOW_USER_AUTH）だけを許す。
        *
        * authFlows を空にすると CDK は ExplicitAuthFlows を出力せず、その場合 Cognito は
        * ALLOW_USER_SRP_AUTH・ALLOW_CUSTOM_AUTH・ALLOW_REFRESH_TOKEN_AUTH の 3 つを有効にする。
        * クライアント ID は画面に載るので、誰でもログイン画面を飛ばしてパスワードを試せる状態だった。
        * 各アプリはマネージドログインの認可コードだけを使うので、ここを閉じても動きは変わらない
        * （認可コードの交換は /oauth2/token で、この設定の対象外）。更新は Amplify が使うので残す。
+       * ALLOW_USER_AUTH は、マネージドログインでパスキーを選んで入るのに要る。
+       * これはログイン画面を通さない API（InitiateAuth）からも使えるが、パスワードで入るときは
+       * MFA が必須のまま（TOTP を求められる）なので、パスワードだけでは入れない。
        */
       (client.node.defaultChild as cognito.CfnUserPoolClient).explicitAuthFlows = [
         'ALLOW_REFRESH_TOKEN_AUTH',
+        'ALLOW_USER_AUTH',
       ];
 
       // ログイン画面の色は 4 アプリと同じ共通テーマ（藍と金）から作る。画像は Cognito の既定を使う
