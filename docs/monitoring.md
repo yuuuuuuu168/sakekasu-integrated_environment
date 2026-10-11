@@ -110,12 +110,14 @@ arn:aws:sns:ap-northeast-1:<アカウント ID>:sakekasu-integrated-alerts
 
 | アプリ | アラーム名の接頭辞 | 例 |
 | --- | --- | --- |
-| builder | `dev-sakekasu-`（`staging-`、`prod-` も） | `dev-sakekasu-ocr-errors` |
+| builder | `sakekasu-builder-`。旧い名前の `dev-sakekasu-`（`staging-`、`prod-` も） | `sakekasu-builder-dev-ocr-errors` |
 | kakeibo | `sakekasu-kakeibo-` | `sakekasu-kakeibo-prod-api-errors` |
-| learning | `dev-sakekasu-learning-`、`sakekasu-learning-` | `dev-sakekasu-learning-api-errors` |
+| learning | `sakekasu-learning-`。旧い名前の `dev-sakekasu-learning-` | `sakekasu-learning-dev-api-errors` |
 | reinvent | `ReinventPlanner` | `ReinventPlanner-api-errors` |
 | 共通基盤 | `sakekasu-integrated-` | `sakekasu-integrated-health-check-auth` |
 
+新しいアラームは `sakekasu-<アプリ>-<env>-` で始める（sakekasu-template の `docs/aws-infra-rules.md` の「名前とタグ」）。
+旧い接頭辞は、名前を変えずに残したアラームのために残している。
 照合は長い接頭辞から順に行う（`dev-sakekasu-learning-` は `dev-sakekasu-` より先に当たる）。
 アプリを足したら、`app-label.ts` とこの表に足す。
 

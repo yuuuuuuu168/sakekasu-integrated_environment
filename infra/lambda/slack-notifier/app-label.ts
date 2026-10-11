@@ -14,14 +14,15 @@ export const APP_PREFIXES: ReadonlyArray<{ prefix: string; app: string }> = [
   { prefix: 'sakekasu-integrated-', app: '共通基盤' },
   // kakeibo: リソース名・スタック名とも sakekasu-kakeibo-{env}-*
   { prefix: 'sakekasu-kakeibo-', app: 'kakeibo' },
-  // learning: スタック名は sakekasu-learning-{env}-*、リソース名は {env}-sakekasu-learning-*
+  // learning: sakekasu-learning-{env}-*。2026-10 より前のアラームは {env}-sakekasu-learning-*
   { prefix: 'sakekasu-learning-', app: 'learning' },
   { prefix: 'dev-sakekasu-learning-', app: 'learning' },
   { prefix: 'staging-sakekasu-learning-', app: 'learning' },
   { prefix: 'prod-sakekasu-learning-', app: 'learning' },
   // reinvent: スタック名が ReinventPlanner*
   { prefix: 'ReinventPlanner', app: 'reinvent' },
-  // builder: リソース名が {env}-sakekasu-*
+  // builder: sakekasu-builder-{env}-*。2026-10 より前のアラームと、名前を変えていないリソースは {env}-sakekasu-*
+  { prefix: 'sakekasu-builder-', app: 'builder' },
   { prefix: 'dev-sakekasu-', app: 'builder' },
   { prefix: 'staging-sakekasu-', app: 'builder' },
   { prefix: 'prod-sakekasu-', app: 'builder' },
