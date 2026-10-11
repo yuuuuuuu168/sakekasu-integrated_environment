@@ -3,11 +3,12 @@ import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { ApexRedirectStack, redirectFunctionCode } from '../lib/apex-redirect-stack';
 import { APEX_DOMAINS } from '../lib/names';
-import { PORTAL_APPS, portalHtmlFromThemeFile } from '../lib/portal';
+import { PORTAL_APPS, portalPartsFromThemeFile, renderPage } from '../lib/portal';
 
 const env = { account: '123456789012', region: 'us-east-1' };
 const TARGET = 'sake.sakekasu-builder.com';
 const CERT = 'arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000';
+const LOGIN = { authDomain: 'auth.example.com', origin: 'https://example.com', clientId: 'portalclient123' };
 
 interface CfRequest {
   uri: string;
@@ -19,11 +20,13 @@ interface CfResponse {
   body?: { encoding: string; data: string };
 }
 
-const PORTAL = portalHtmlFromThemeFile();
+const PARTS = portalPartsFromThemeFile();
+const TOP = renderPage(PARTS, 'top');
+const APPS = renderPage(PARTS, 'apps');
 
 /** CloudFront Functions の本体を Node で走らせる（文法は ES5 相当なのでそのまま動く） */
-function runRedirect(request: CfRequest): CfResponse {
-  const handler = new Function(`${redirectFunctionCode(TARGET, PORTAL)}; return handler;`)() as (event: {
+function runRedirect(request: CfRequest, login: typeof LOGIN | undefined = LOGIN): CfResponse {
+  const handler = new Function(`${redirectFunctionCode(TARGET, PARTS, login)}; return handler;`)() as (event: {
     request: CfRequest;
   }) => CfResponse;
   return handler({ request });
@@ -36,34 +39,76 @@ describe('転送の関数', () => {
     expect(res.headers.location.value).toBe(`https://${TARGET}/records`);
   });
 
-  it('トップは 4 アプリへの入口のページを返す', () => {
+  it('トップは表紙を返し、「パスキーでログイン」は /apps へ行く', () => {
     for (const uri of ['/', '/index.html']) {
       const res = runRedirect({ uri, querystring: {} });
       expect(res.statusCode).toBe(200);
       expect(res.headers['content-type'].value).toBe('text/html; charset=utf-8');
-      expect(res.body?.data).toBe(PORTAL);
-      for (const app of PORTAL_APPS) {
-        expect(res.body?.data).toContain(`href="${app.url}"`);
-        expect(res.body?.data).toContain(app.label);
-      }
+      expect(res.body?.data).toBe(TOP);
     }
+    expect(TOP).toContain('href="/apps"');
+    expect(TOP).toContain('パスキーでログイン');
+  });
+
+  it('/apps は code が無ければ共通ログインへ送る', () => {
+    const res = runRedirect({ uri: '/apps', querystring: {} });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location.value).toBe(
+      'https://auth.example.com/oauth2/authorize?client_id=portalclient123&response_type=code&scope=openid' +
+        '&redirect_uri=https%3A%2F%2Fexample.com%2Fapps',
+    );
+    expect(res.headers['cache-control'].value).toBe('no-store');
+  });
+
+  it('/apps は共通ログインから code 付きで戻ったら 4 アプリの一覧を返す', () => {
+    const res = runRedirect({ uri: '/apps', querystring: { code: { value: 'abc' } } });
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.data).toBe(APPS);
+    expect(res.headers['cache-control'].value).toBe('no-store');
+    for (const app of PORTAL_APPS) {
+      expect(APPS).toContain(`href="${app.url}"`);
+      expect(APPS).toContain(app.label);
+    }
+    expect(APPS).toContain('href="/logout"');
+  });
+
+  it('/apps に error 付きで戻ったら表紙へ', () => {
+    const res = runRedirect({ uri: '/apps', querystring: { error: { value: 'access_denied' } } });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location.value).toBe('/');
+  });
+
+  it('/logout は共通ログインのセッションを消して表紙へ戻る', () => {
+    const res = runRedirect({ uri: '/logout', querystring: {} });
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location.value).toBe(
+      'https://auth.example.com/logout?client_id=portalclient123&logout_uri=https%3A%2F%2Fexample.com%2F',
+    );
+  });
+
+  it('クライアント ID が無いうちは、/apps は共通ログインを通さずに一覧を返す', () => {
+    const login = { ...LOGIN, clientId: undefined } as unknown as typeof LOGIN;
+    expect(runRedirect({ uri: '/apps', querystring: {} }, login).body?.data).toBe(APPS);
+    expect(runRedirect({ uri: '/logout', querystring: {} }, login).headers.location.value).toBe('/');
   });
 
   it('入口のページは日本語として表示する（lang と日本語のフォントを先に）', () => {
-    expect(PORTAL).toContain('<html lang="ja">');
-    expect(PORTAL).toMatch(/font-family:'Hiragino Sans'/);
-    expect(PORTAL).not.toContain('system-ui');
+    for (const html of [TOP, APPS]) {
+      expect(html).toContain('<html lang="ja">');
+      expect(html).toMatch(/font-family:'Hiragino Sans'/);
+      expect(html).not.toContain('system-ui');
+    }
   });
 
-  it('入口のページは外のものを読まない（CSP）', () => {
+  it('入口のページは外のものもスクリプトも読まない（CSP）', () => {
     const csp = runRedirect({ uri: '/', querystring: {} }).headers['content-security-policy'].value;
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
-    expect(PORTAL).not.toMatch(/<script|<link|src=/);
+    for (const html of [TOP, APPS]) expect(html).not.toMatch(/<script|<link|src=|url\(/);
   });
 
   it('関数のコードは CloudFront Functions の上限（10 KB）に収まり、ASCII だけ', () => {
-    const code = redirectFunctionCode(TARGET, PORTAL);
+    const code = redirectFunctionCode(TARGET, PARTS, LOGIN);
     expect(Buffer.byteLength(code, 'utf8')).toBeLessThan(10 * 1024);
     expect(code).toMatch(/^[\x00-\x7f]*$/);
   });

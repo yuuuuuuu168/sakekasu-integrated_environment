@@ -7,14 +7,28 @@ Amplify アプリを消す。
 
 ## 作り
 
-- トップ（`/` と `/index.html`）は、4 アプリへの入口のページを 200 で返す（2026-10-11〜）。
-  iPhone でブックマークを 1 つにまとめるため。並べるアプリ・名前・絵文字は `infra/lib/portal.ts` の `PORTAL_APPS`
+- 4 アプリの入口（2026-10-11〜）。iPhone でブックマークを 1 つにまとめ、ログインを入口で済ませるため。
+  流れは「表紙 → パスキーでログイン → 共通ログイン → アプリの一覧」
+
+  | パス | 返すもの |
+  | --- | --- |
+  | `/`、`/index.html` | 表紙（和モダン、青海波）。「パスキーでログイン」は `/apps` へ |
+  | `/apps` | `code` が無ければ共通ログイン（`/oauth2/authorize`）へ 302。戻ってきたら 4 アプリの一覧。`error` 付きなら表紙へ |
+  | `/logout` | 共通ログインの `/logout` へ 302（セッションを消して表紙へ戻る） |
+
+  - 共通ログインのアプリクライアントは `portal`（cdk.json の `apps`。戻り先は `https://sakekasu-builder.com/apps`）。
+    クライアント ID は context `portalClientId` で渡す（スタックは参照でつながない）。無いうちは `/apps` が
+    共通ログインを通さずに一覧を出す
+  - 認可コードは交換しない。一覧はリンクを並べるだけで、各アプリが自分でログインを確かめる。
+    `/apps` が共通ログインを通すのは流れを作るためで、守りではない
+  - 共通ログインのセッションがあれば、各アプリでもパスキーの入力なしで入れる（アプリ側の「サインイン」ボタンは残る）
+  - 並べるアプリ・名前・絵文字は `infra/lib/portal.ts` の `PORTAL_APPS`
   - 色は共通テーマ（`theme/sakekasu-theme.css`）から合成のたびに作る。ライト・ダークは OS に合わせる
   - フォントは日本語の字形のもの（ヒラギノ、游ゴシック、メイリオ、Noto Sans JP など）を先に並べる。`system-ui` は使わない（中国語の字形になる環境がある）
   - HTML は関数のコードに埋め込む。CloudFront Functions のコードは 10 KB までなので、テーマの CSS は丸ごと載せず、
-    使う色だけを変数にする（テストで大きさを見ている）
-  - 外のファイルは読まない。CSP で `default-src 'none'`（インラインの style だけ許す）
-  - 死活監視（[monitoring.md](monitoring.md)）の `portal` が 200 を見る
+    使う色だけを変数にし、2 枚のページで CSS を共有する（テストで大きさを見ている）
+  - 外のファイルもスクリプトも読まない。CSP で `default-src 'none'`（インラインの style だけ許す）。青海波は CSS のグラデーションで描く
+  - 死活監視（[monitoring.md](monitoring.md)）の `portal` が `/` の 200 を見る
 - それ以外のパスは、CloudFront Functions がビューアーリクエストで 301 を返す。パスとクエリは保つ
   （`https://sakekasu-builder.com/records?x=1` → `https://sake.sakekasu-builder.com/records?x=1`）。
   builder を apex で使っていた頃のブックマークを生かすため

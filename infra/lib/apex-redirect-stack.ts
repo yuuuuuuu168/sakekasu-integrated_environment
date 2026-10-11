@@ -4,13 +4,29 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import type { Construct } from 'constructs';
 import { PREFIX } from './names';
-import { portalHtmlFromThemeFile } from './portal';
+import { portalPartsFromThemeFile, type PortalParts } from './portal';
+
+/** 入口の「パスキーでログイン」で使う共通ログイン */
+export interface PortalLogin {
+  /** ログイン画面のドメイン。例: auth.sakekasu-builder.com */
+  authDomain: string;
+  /** 入口のオリジン。共通ログインの戻り先（<origin>/apps）とログアウト後の戻り先（<origin>/）になる */
+  origin: string;
+  /**
+   * 入口のアプリクライアント ID（cdk.json の context `portalClientId`）。
+   * クライアントは共通ログインのスタックで作るので、デプロイして ID が出てから書く。
+   * 無いうちは、/apps は共通ログインを通さずに一覧を出す
+   */
+  clientId?: string;
+}
 
 export interface ApexRedirectStackProps extends cdk.StackProps {
   /** 転送先のホスト名（https:// を付けない）。例: sake.sakekasu-builder.com */
   targetDomain: string;
-  /** トップ（/）で返す入口のページ。省くと共通テーマから作る（lib/portal.ts） */
-  portalHtml?: string;
+  /** 入口のページ。省くと共通テーマから作る（lib/portal.ts） */
+  portalParts?: PortalParts;
+  /** 入口から共通ログインへ送るときの設定（docs/apex-redirect.md） */
+  login?: PortalLogin;
   /**
    * 転送で受けるドメインと、その証明書（us-east-1、コンソールで作る）。
    * 無いうちは CloudFront の既定のドメイン（*.cloudfront.net）だけで作る。
@@ -27,9 +43,13 @@ function jsString(value: string): string {
 /**
  * CloudFront Functions の本体。オリジンには一度も届かない。
  *
- * - トップ（/）は 4 アプリへの入口のページ（portalHtml）を 200 で返す
- * - それ以外は、パスとクエリを保ったまま転送先へ 301 を返す。builder を apex で使っていた頃の
- *   ブックマーク（/records など）を生かすため
+ * - `/`: 入口の表紙。「パスキーでログイン」は /apps へ行く
+ * - `/apps`: 共通ログインから戻ったあとのアプリの一覧。`code` が無ければ共通ログイン
+ *   （/oauth2/authorize）へ 302 で送る。共通ログインにセッションが残っていれば、入力なしで戻ってくる。
+ *   `error` 付きで戻ったら表紙へ。コードは交換しない（一覧はリンクを並べるだけで、各アプリが
+ *   自分でログインを確かめる。ここは流れを作るためで、守りではない）
+ * - `/logout`: 共通ログインのセッションを消して（/logout）表紙へ戻る
+ * - それ以外: パスとクエリを保ったまま転送先へ 301。builder を apex で使っていた頃のブックマークを生かす
  *
  * 文字列で持っているのはテストで中身を走らせるため（__tests__/apex-redirect-stack.test.ts）。
  * クエリの値は CloudFront が受け取ったまま（URL エンコードされたまま）渡ってくるので、
@@ -38,28 +58,56 @@ function jsString(value: string): string {
  * HSTS も付ける。Amplify の配信が apex に includeSubDomains 付きで出していたもの
  * （sakekasu-builder の docs/amplify-exit.md）を、転送に切り替えても落とさない。
  */
-export function redirectFunctionCode(targetDomain: string, portalHtml: string): string {
-  return `var PORTAL = ${jsString(portalHtml)};
+export function redirectFunctionCode(targetDomain: string, parts: PortalParts, login?: PortalLogin): string {
+  const authorize = login?.clientId
+    ? `https://${login.authDomain}/oauth2/authorize?client_id=${encodeURIComponent(login.clientId)}` +
+      `&response_type=code&scope=openid&redirect_uri=${encodeURIComponent(`${login.origin}/apps`)}`
+    : '';
+  const logout = login?.clientId
+    ? `https://${login.authDomain}/logout?client_id=${encodeURIComponent(login.clientId)}` +
+      `&logout_uri=${encodeURIComponent(`${login.origin}/`)}`
+    : '/';
+  return `var HEAD = ${jsString(parts.head)};
+var CSS = ${jsString(parts.css)};
+var TOP = ${jsString(parts.top)};
+var APPS = ${jsString(parts.apps)};
+var AUTHORIZE = ${jsString(authorize)};
+var LOGOUT = ${jsString(logout)};
+var HSTS = { value: 'max-age=31536000; includeSubDomains' };
+function page(body, cache) {
+  return {
+    statusCode: 200,
+    statusDescription: 'OK',
+    headers: {
+      'content-type': { value: 'text/html; charset=utf-8' },
+      'strict-transport-security': HSTS,
+      'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
+      'x-content-type-options': { value: 'nosniff' },
+      'referrer-policy': { value: 'no-referrer' },
+      'cache-control': { value: cache }
+    },
+    body: { encoding: 'text', data: HEAD + '<style>' + CSS + '</style></head><body>' + body + '</body></html>' }
+  };
+}
+function found(location) {
+  return {
+    statusCode: 302,
+    statusDescription: 'Found',
+    headers: { location: { value: location }, 'strict-transport-security': HSTS, 'cache-control': { value: 'no-store' } }
+  };
+}
 function handler(event) {
   var request = event.request;
-  var hsts = { value: 'max-age=31536000; includeSubDomains' };
-  if (request.uri === '/' || request.uri === '/index.html') {
-    return {
-      statusCode: 200,
-      statusDescription: 'OK',
-      headers: {
-        'content-type': { value: 'text/html; charset=utf-8' },
-        'strict-transport-security': hsts,
-        'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
-        'x-content-type-options': { value: 'nosniff' },
-        'referrer-policy': { value: 'strict-origin-when-cross-origin' },
-        'cache-control': { value: 'max-age=300' }
-      },
-      body: { encoding: 'text', data: PORTAL }
-    };
-  }
-  var parts = [];
+  var uri = request.uri;
   var qs = request.querystring;
+  if (uri === '/' || uri === '/index.html') return page(TOP, 'max-age=300');
+  if (uri === '/apps' || uri === '/apps/') {
+    if (qs.error) return found('/');
+    if (AUTHORIZE && !qs.code) return found(AUTHORIZE);
+    return page(APPS, 'no-store');
+  }
+  if (uri === '/logout') return found(LOGOUT);
+  var parts = [];
   for (var key in qs) {
     var entry = qs[key];
     var values = entry.multiValue ? entry.multiValue : [entry];
@@ -67,13 +115,13 @@ function handler(event) {
       parts.push(values[i].value === '' ? key : key + '=' + values[i].value);
     }
   }
-  var location = 'https://${targetDomain}' + request.uri + (parts.length ? '?' + parts.join('&') : '');
+  var location = 'https://${targetDomain}' + uri + (parts.length ? '?' + parts.join('&') : '');
   return {
     statusCode: 301,
     statusDescription: 'Moved Permanently',
     headers: {
       location: { value: location },
-      'strict-transport-security': hsts,
+      'strict-transport-security': HSTS,
       'cache-control': { value: 'max-age=3600' }
     }
   };
@@ -103,10 +151,10 @@ export class ApexRedirectStack extends cdk.Stack {
 
     const redirect = new cloudfront.Function(this, 'RedirectFunction', {
       functionName: `${PREFIX}-apex-redirect`,
-      comment: `Portal at / and redirect other paths to https://${props.targetDomain}`,
+      comment: `Portal at / and /apps, redirect other paths to https://${props.targetDomain}`,
       runtime: cloudfront.FunctionRuntime.JS_2_0,
       code: cloudfront.FunctionCode.fromInline(
-        redirectFunctionCode(props.targetDomain, props.portalHtml ?? portalHtmlFromThemeFile()),
+        redirectFunctionCode(props.targetDomain, props.portalParts ?? portalPartsFromThemeFile(), props.login),
       ),
     });
 

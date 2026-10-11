@@ -139,6 +139,8 @@ function buildPlatformStacks(): void {
   const apexCertificateArn = certificateArn('apex');
   new ApexRedirectStack(app, APEX_REDIRECT_STACK_NAME, {
     targetDomain: APEX_REDIRECT_TARGET,
+    // 入口の「パスキーでログイン」。クライアントは identity スタックの apps の portal。参照ではつながず、ID を context で渡す
+    login: { authDomain: AUTH_DOMAIN, origin: `https://${APEX_DOMAINS[0]}`, clientId: context('portalClientId') },
     ...(apexCertificateArn
       ? { customDomain: { domainNames: APEX_DOMAINS, certificateArn: apexCertificateArn } }
       : {}),
