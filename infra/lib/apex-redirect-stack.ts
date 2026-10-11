@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PREFIX } from './names';
-import { portalPartsFromThemeFile, type PortalParts } from './portal';
+import { PORTAL_MANIFEST_PATH, portalManifestFromThemeFile, portalPartsFromThemeFile, type PortalParts } from './portal';
 
 /** 入口の「パスキーでログイン」で使う共通ログイン */
 export interface PortalLogin {
@@ -39,8 +39,8 @@ export interface ApexRedirectStackProps extends cdk.StackProps {
 }
 
 /**
- * iPhone の「ホーム画面に追加」で使うアイコン（180x180 の PNG）。
- * 元は同じディレクトリの apple-touch-icon.html で、Chromium で 180x180 に撮って 64 色に減らしたもの。
+ * iPhone の「ホーム画面に追加」で使うアイコン（192x192 の PNG。apple-touch-icon とマニフェストで共有）。
+ * 元は同じディレクトリの apple-touch-icon.html で、Chromium で 192x192 に撮って 64 色に減らしたもの。
  * 関数のコードに base64 で埋め込むので、4 KB ほどに抑えてある
  */
 export const APPLE_TOUCH_ICON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '../assets/apple-touch-icon.png');
@@ -92,7 +92,7 @@ function page(body, cache) {
     headers: {
       'content-type': { value: 'text/html; charset=utf-8' },
       'strict-transport-security': HSTS,
-      'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
+      'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
       'x-content-type-options': { value: 'nosniff' },
       'referrer-policy': { value: 'no-referrer' },
       'cache-control': { value: cache }
@@ -141,24 +141,26 @@ function handler(event) {
 }
 
 /**
- * ホーム画面のアイコンを返す CloudFront Functions のコード。入口のページとは別の関数にする。
+ * ホーム画面のアイコンとマニフェストを返す CloudFront Functions のコード。入口のページとは別の関数にする。
  * 関数のコードは 10 KB までで、入口のページだけで 8 KB 近く使っているため。
  * iPhone は `<link rel="apple-touch-icon">` が無くても /apple-touch-icon.png（と -precomposed.png）を
  * 取りに来るので、/apple-touch-icon で始まるパスにはどれも同じ画像を返す。
  */
-export function iconFunctionCode(png: Buffer): string {
+export function iconFunctionCode(png: Buffer, manifest: string): string {
   return `var ICON = '${png.toString('base64')}';
+var MANIFEST = ${jsString(manifest)};
 function handler(event) {
+  var isManifest = event.request.uri === '${PORTAL_MANIFEST_PATH}';
   return {
     statusCode: 200,
     statusDescription: 'OK',
     headers: {
-      'content-type': { value: 'image/png' },
+      'content-type': { value: isManifest ? 'application/manifest+json' : 'image/png' },
       'strict-transport-security': { value: 'max-age=31536000; includeSubDomains' },
       'x-content-type-options': { value: 'nosniff' },
-      'cache-control': { value: 'max-age=86400' }
+      'cache-control': { value: isManifest ? 'max-age=300' : 'max-age=86400' }
     },
-    body: { encoding: 'base64', data: ICON }
+    body: isManifest ? { encoding: 'text', data: MANIFEST } : { encoding: 'base64', data: ICON }
   };
 }
 `;
@@ -195,9 +197,9 @@ export class ApexRedirectStack extends cdk.Stack {
 
     const icon = new cloudfront.Function(this, 'IconFunction', {
       functionName: `${PREFIX}-apex-icon`,
-      comment: 'Home screen icon for the portal (apple-touch-icon)',
+      comment: 'Home screen icon and web app manifest for the portal',
       runtime: cloudfront.FunctionRuntime.JS_2_0,
-      code: cloudfront.FunctionCode.fromInline(iconFunctionCode(fs.readFileSync(APPLE_TOUCH_ICON_PATH))),
+      code: cloudfront.FunctionCode.fromInline(iconFunctionCode(fs.readFileSync(APPLE_TOUCH_ICON_PATH), portalManifestFromThemeFile())),
     });
 
     // 関数が必ず応答を返すので、オリジンには届かない（defaultBehavior と同じ）
@@ -216,15 +218,18 @@ export class ApexRedirectStack extends cdk.Stack {
           { function: redirect, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },
         ],
       },
-      additionalBehaviors: {
-        '/apple-touch-icon*': {
-          origin: target,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          functionAssociations: [{ function: icon, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST }],
-        },
-      },
+      additionalBehaviors: Object.fromEntries(
+        ['/apple-touch-icon*', PORTAL_MANIFEST_PATH].map((pathPattern) => [
+          pathPattern,
+          {
+            origin: target,
+            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+            cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+            functionAssociations: [{ function: icon, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST }],
+          },
+        ]),
+      ),
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
       ...(custom
