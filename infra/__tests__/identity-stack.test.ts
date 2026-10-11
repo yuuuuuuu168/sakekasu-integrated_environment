@@ -121,6 +121,15 @@ describe('IdentityStack: アプリクライアント', () => {
     }
   });
 
+  // パスキーの登録画面に要る。登録に使うアプリだけに許す
+  it('aws.cognito.signin.user.admin は登録に使うアプリ（reinvent）だけに許す', () => {
+    const clients = Object.values(template().findResources('AWS::Cognito::UserPoolClient'));
+    for (const client of clients) {
+      const isRegistration = client.Properties.ClientName === 'sakekasu-integrated-reinvent';
+      expect(client.Properties.AllowedOAuthScopes.includes('aws.cognito.signin.user.admin')).toBe(isRegistration);
+    }
+  });
+
   it('戻り先は設定した URL だけ', () => {
     template().hasResourceProperties('AWS::Cognito::UserPoolClient', {
       ClientName: 'sakekasu-integrated-kakeibo',

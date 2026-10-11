@@ -166,12 +166,16 @@ Face ID だけで入る。サーバー側の設定は `infra/lib/identity-stack.
 2. 同じブラウザ（iPhone なら、ホーム画面のアプリではなくブラウザのタブ）で次を開く。reinvent のクライアントの例
 
    ```
-   https://auth.sakekasu-builder.com/passkeys/add?client_id=7thbqs1omkqdgo6k922sqhefdi&redirect_uri=https%3A%2F%2Freinvent.sakekasu-builder.com%2F
+   https://auth.sakekasu-builder.com/passkeys/add?client_id=7thbqs1omkqdgo6k922sqhefdi&response_type=code&scope=openid+aws.cognito.signin.user.admin&redirect_uri=https%3A%2F%2Freinvent.sakekasu-builder.com%2F
    ```
 
 3. 保存先を聞かれたら 1Password を選ぶ
 
 パスキーは 1Password で同期されるので、ほかの端末で登録し直す必要はない。
+
+登録は本人のアクセストークンで行う操作なので、`aws.cognito.signin.user.admin` のスコープが要る。
+このスコープを許しているのは reinvent のクライアントだけ（`PASSKEY_REGISTRATION_APP`）。スコープの無いクライアントで
+開いたときは、CloudTrail に `passkeys_add_GET` の `Unexpected exception` が残り、登録画面を出さずにアプリへ戻った。
 
 
 ## パスキーを入れたときの経緯（2026-10-11）
