@@ -7,15 +7,18 @@ export interface PortalApp {
   label: string;
   /** 名前の前に出す絵文字 */
   icon: string;
-  /** 開く URL（https のみ） */
+  /**
+   * 開く URL（https のみ）。`?sso=1` は「入口で共通ログインを済ませてきた」という合図で、
+   * 各アプリは未ログインならサインインのボタンを出さずに共通ログインへ送る（入力なしで戻ってくる）
+   */
   url: string;
 }
 
 export const PORTAL_APPS: PortalApp[] = [
-  { label: '酒カス', icon: '🍶', url: 'https://sake.sakekasu-builder.com/' },
-  { label: '家計簿', icon: '💰', url: 'https://kakeibo.sakekasu-builder.com/' },
-  { label: 'learning', icon: '📚', url: 'https://learning.sakekasu-builder.com/' },
-  { label: 're:Invent', icon: '☁️', url: 'https://reinvent.sakekasu-builder.com/' },
+  { label: '酒カス', icon: '🍶', url: 'https://sake.sakekasu-builder.com/?sso=1' },
+  { label: '家計簿', icon: '💰', url: 'https://kakeibo.sakekasu-builder.com/?sso=1' },
+  { label: 'learning', icon: '📚', url: 'https://learning.sakekasu-builder.com/?sso=1' },
+  { label: 're:Invent', icon: '☁️', url: 'https://reinvent.sakekasu-builder.com/?sso=1' },
 ];
 
 /** 日本語の字形のフォント。iPhone・Mac はヒラギノ、Windows は游ゴシックかメイリオ、それ以外は Noto や IPA */
