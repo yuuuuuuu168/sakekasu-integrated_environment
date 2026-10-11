@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { ApexRedirectStack, redirectFunctionCode } from '../lib/apex-redirect-stack';
 import { APEX_DOMAINS } from '../lib/names';
+import { PORTAL_APPS, portalHtmlFromThemeFile } from '../lib/portal';
 
 const env = { account: '123456789012', region: 'us-east-1' };
 const TARGET = 'sake.sakekasu-builder.com';
@@ -15,11 +16,14 @@ interface CfRequest {
 interface CfResponse {
   statusCode: number;
   headers: Record<string, { value: string }>;
+  body?: { encoding: string; data: string };
 }
+
+const PORTAL = portalHtmlFromThemeFile();
 
 /** CloudFront Functions の本体を Node で走らせる（文法は ES5 相当なのでそのまま動く） */
 function runRedirect(request: CfRequest): CfResponse {
-  const handler = new Function(`${redirectFunctionCode(TARGET)}; return handler;`)() as (event: {
+  const handler = new Function(`${redirectFunctionCode(TARGET, PORTAL)}; return handler;`)() as (event: {
     request: CfRequest;
   }) => CfResponse;
   return handler({ request });
@@ -32,25 +36,55 @@ describe('転送の関数', () => {
     expect(res.headers.location.value).toBe(`https://${TARGET}/records`);
   });
 
-  it('トップは転送先のトップへ', () => {
-    expect(runRedirect({ uri: '/', querystring: {} }).headers.location.value).toBe(`https://${TARGET}/`);
+  it('トップは 4 アプリへの入口のページを返す', () => {
+    for (const uri of ['/', '/index.html']) {
+      const res = runRedirect({ uri, querystring: {} });
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type'].value).toBe('text/html; charset=utf-8');
+      expect(res.body?.data).toBe(PORTAL);
+      for (const app of PORTAL_APPS) {
+        expect(res.body?.data).toContain(`href="${app.url}"`);
+        expect(res.body?.data).toContain(app.label);
+      }
+    }
+  });
+
+  it('入口のページは日本語として表示する（lang と日本語のフォントを先に）', () => {
+    expect(PORTAL).toContain('<html lang="ja">');
+    expect(PORTAL).toMatch(/font-family:'Hiragino Sans'/);
+    expect(PORTAL).not.toContain('system-ui');
+  });
+
+  it('入口のページは外のものを読まない（CSP）', () => {
+    const csp = runRedirect({ uri: '/', querystring: {} }).headers['content-security-policy'].value;
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(PORTAL).not.toMatch(/<script|<link|src=/);
+  });
+
+  it('関数のコードは CloudFront Functions の上限（10 KB）に収まり、ASCII だけ', () => {
+    const code = redirectFunctionCode(TARGET, PORTAL);
+    expect(Buffer.byteLength(code, 'utf8')).toBeLessThan(10 * 1024);
+    expect(code).toMatch(/^[\x00-\x7f]*$/);
   });
 
   it('クエリは受け取ったままの形でつなぐ（同じキーが複数あっても落とさない）', () => {
     const res = runRedirect({
-      uri: '/',
+      uri: '/search',
       querystring: {
         q: { value: 'a%20b' },
         tag: { value: 'x', multiValue: [{ value: 'x' }, { value: 'y' }] },
         flag: { value: '' },
       },
     });
-    expect(res.headers.location.value).toBe(`https://${TARGET}/?q=a%20b&tag=x&tag=y&flag`);
+    expect(res.headers.location.value).toBe(`https://${TARGET}/search?q=a%20b&tag=x&tag=y&flag`);
   });
 
   it('HSTS を付ける（Amplify が apex に出していたものを落とさない）', () => {
-    const res = runRedirect({ uri: '/', querystring: {} });
-    expect(res.headers['strict-transport-security'].value).toBe('max-age=31536000; includeSubDomains');
+    for (const uri of ['/', '/records']) {
+      const res = runRedirect({ uri, querystring: {} });
+      expect(res.headers['strict-transport-security'].value).toBe('max-age=31536000; includeSubDomains');
+    }
   });
 });
 

@@ -37,6 +37,7 @@
       { "name": "kakeibo", "url": "https://kakeibo.sakekasu-builder.com/", "expectStatus": [200] },
       { "name": "learning", "url": "https://learning.sakekasu-builder.com/", "expectStatus": [200] },
       { "name": "reinvent", "url": "https://reinvent.sakekasu-builder.com/", "expectStatus": [200] },
+      { "name": "portal", "url": "https://sakekasu-builder.com/", "expectStatus": [200] },
       {
         "name": "auth",
         "url": "https://auth.sakekasu-builder.com/login?client_id=7thbqs1omkqdgo6k922sqhefdi&response_type=code&redirect_uri=https%3A%2F%2Freinvent.sakekasu-builder.com%2F",

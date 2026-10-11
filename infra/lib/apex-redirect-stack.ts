@@ -4,10 +4,13 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import type { Construct } from 'constructs';
 import { PREFIX } from './names';
+import { portalHtmlFromThemeFile } from './portal';
 
 export interface ApexRedirectStackProps extends cdk.StackProps {
   /** 転送先のホスト名（https:// を付けない）。例: sake.sakekasu-builder.com */
   targetDomain: string;
+  /** トップ（/）で返す入口のページ。省くと共通テーマから作る（lib/portal.ts） */
+  portalHtml?: string;
   /**
    * 転送で受けるドメインと、その証明書（us-east-1、コンソールで作る）。
    * 無いうちは CloudFront の既定のドメイン（*.cloudfront.net）だけで作る。
@@ -16,9 +19,17 @@ export interface ApexRedirectStackProps extends cdk.StackProps {
   customDomain?: { domainNames: string[]; certificateArn: string };
 }
 
+/** JS の文字列リテラルにする。ASCII だけにして、関数のコードの文字コードに左右されないようにする */
+function jsString(value: string): string {
+  return JSON.stringify(value).replace(/[\u007f-\uffff]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 /**
- * CloudFront Functions の本体。ビューアーリクエストで、パスとクエリを保ったまま転送先へ 301 を返す。
- * オリジンには一度も届かない。
+ * CloudFront Functions の本体。オリジンには一度も届かない。
+ *
+ * - トップ（/）は 4 アプリへの入口のページ（portalHtml）を 200 で返す
+ * - それ以外は、パスとクエリを保ったまま転送先へ 301 を返す。builder を apex で使っていた頃の
+ *   ブックマーク（/records など）を生かすため
  *
  * 文字列で持っているのはテストで中身を走らせるため（__tests__/apex-redirect-stack.test.ts）。
  * クエリの値は CloudFront が受け取ったまま（URL エンコードされたまま）渡ってくるので、
@@ -27,9 +38,26 @@ export interface ApexRedirectStackProps extends cdk.StackProps {
  * HSTS も付ける。Amplify の配信が apex に includeSubDomains 付きで出していたもの
  * （sakekasu-builder の docs/amplify-exit.md）を、転送に切り替えても落とさない。
  */
-export function redirectFunctionCode(targetDomain: string): string {
-  return `function handler(event) {
+export function redirectFunctionCode(targetDomain: string, portalHtml: string): string {
+  return `var PORTAL = ${jsString(portalHtml)};
+function handler(event) {
   var request = event.request;
+  var hsts = { value: 'max-age=31536000; includeSubDomains' };
+  if (request.uri === '/' || request.uri === '/index.html') {
+    return {
+      statusCode: 200,
+      statusDescription: 'OK',
+      headers: {
+        'content-type': { value: 'text/html; charset=utf-8' },
+        'strict-transport-security': hsts,
+        'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
+        'x-content-type-options': { value: 'nosniff' },
+        'referrer-policy': { value: 'strict-origin-when-cross-origin' },
+        'cache-control': { value: 'max-age=300' }
+      },
+      body: { encoding: 'text', data: PORTAL }
+    };
+  }
   var parts = [];
   var qs = request.querystring;
   for (var key in qs) {
@@ -45,7 +73,7 @@ export function redirectFunctionCode(targetDomain: string): string {
     statusDescription: 'Moved Permanently',
     headers: {
       location: { value: location },
-      'strict-transport-security': { value: 'max-age=31536000; includeSubDomains' },
+      'strict-transport-security': hsts,
       'cache-control': { value: 'max-age=3600' }
     }
   };
@@ -54,8 +82,8 @@ export function redirectFunctionCode(targetDomain: string): string {
 }
 
 /**
- * apex（sakekasu-builder.com）と www を、builder の画面（sake.sakekasu-builder.com）へ転送する。
- * 手順は docs/apex-redirect.md。
+ * apex（sakekasu-builder.com）と www。トップは 4 アプリへの入口のページを返し、それ以外のパスは
+ * builder の画面（sake.sakekasu-builder.com）へ転送する。手順は docs/apex-redirect.md。
  *
  * これまでは Amplify Hosting が apex で builder を配っていた。builder を sake. へ移したので
  * （sakekasu-builder の docs/sake-subdomain.md）、apex は特定のアプリのものではなく 4 アプリ共通の
@@ -75,9 +103,11 @@ export class ApexRedirectStack extends cdk.Stack {
 
     const redirect = new cloudfront.Function(this, 'RedirectFunction', {
       functionName: `${PREFIX}-apex-redirect`,
-      comment: `Redirect to https://${props.targetDomain} keeping the path and query`,
+      comment: `Portal at / and redirect other paths to https://${props.targetDomain}`,
       runtime: cloudfront.FunctionRuntime.JS_2_0,
-      code: cloudfront.FunctionCode.fromInline(redirectFunctionCode(props.targetDomain)),
+      code: cloudfront.FunctionCode.fromInline(
+        redirectFunctionCode(props.targetDomain, props.portalHtml ?? portalHtmlFromThemeFile()),
+      ),
     });
 
     const custom = props.customDomain;
