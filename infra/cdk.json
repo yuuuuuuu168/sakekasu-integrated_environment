@@ -27,6 +27,11 @@
         "logoutUrls": ["https://kakeibo.sakekasu-builder.com/", "http://localhost:5173/"]
       },
       {
+        "name": "portal",
+        "callbackUrls": ["https://sakekasu-builder.com/apps"],
+        "logoutUrls": ["https://sakekasu-builder.com/"]
+      },
+      {
         "name": "learning",
         "callbackUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"],
         "logoutUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"]
