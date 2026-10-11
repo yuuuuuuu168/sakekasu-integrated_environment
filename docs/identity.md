@@ -9,7 +9,7 @@
 - TOTP の MFA を必須にする。パスワードは 16 文字以上（英大文字・英小文字・数字を含む）
 - ログイン画面は Cognito のマネージドログインを `auth.sakekasu-builder.com` で出す
 - 各アプリはアプリクライアントを 1 つずつ持ち、ログイン画面へリダイレクトする（認可コード + PKCE）
-- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
+- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）と選択式のログイン（`ALLOW_USER_AUTH`、パスキーの切り分け中）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
 - リフレッシュトークンは 90 日。iPhone のホーム画面に置いた Web アプリはアプリごと（Safari とも別）にセッションが分かれるので、入り直しを減らすため長めにしている
 - ログイン画面のドメインにセッションが残るので、1 つのアプリでログインすれば、
   ほかのアプリは入力なしで入れる
@@ -144,7 +144,9 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
   `describe-managed-login-branding-by-client --return-merged-resources` で取ったもの）と同じにしてあり、
   テストで確かめている。Cognito が項目を足したら、取り直して合わせる
 
-## パスキーを試して戻した（2026-10-11）
+## パスキーを試す（2026-10-11〜）
+
+### 1 回目：戻した
 
 パスキー（1Password に保存して Face ID で入る）を足した。最初の認証にパスキーを加え、本人確認つきのパスキーを
 MFA として数える設定（`WebAuthnFactorConfiguration` = `MULTI_FACTOR_WITH_USER_VERIFICATION`）にし、
@@ -152,8 +154,17 @@ MFA として数える設定（`WebAuthnFactorConfiguration` = `MULTI_FACTOR_WIT
 別々に入れる形に変わり、パスワードの確認（CloudTrail の `verifyPassword_POST`）が 400 `Unexpected exception`
 で通らなくなった。画面には「Incorrect username or password」と出る。前日まで同じ端末で通っていたパスワードだったので、戻した。
 
-もう一度試すときは、本番のユーザープールでは試さない。別のユーザープール（MFA 必須・管理者作成のユーザー・
-マネージドログイン）で、パスワード + TOTP とパスキーの両方が通ることを確かめてから入れる。
+### 2 回目：1 つずつ足して切り分ける
+
+利用者は本人だけなので、いまのユーザープールで試す。どの設定でパスワードが通らなくなるのかを見るため、
+1 回のデプロイで 1 つずつ足し、そのたびにログイン画面からパスワード + TOTP で入れるかを確かめる。
+通らなければその段階を戻す。何度も失敗すると Cognito が一時的にロックするので、各段階で試すのは 1〜2 回にする。
+
+| 段階 | 足すもの | 結果 |
+| --- | --- | --- |
+| 1 | クライアントに `ALLOW_USER_AUTH`（最初の認証はパスワードだけ） | 確認待ち |
+| 2 | 最初の認証にパスキー、RP ID、本人確認 `required`（MFA としては数えない） | |
+| 3 | `WebAuthnFactorConfiguration` = `MULTI_FACTOR_WITH_USER_VERIFICATION` | |
 
 ## まだやっていないこと
 
