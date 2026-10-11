@@ -3,7 +3,8 @@ import { APP_PREFIXES, UNKNOWN_APP, appForAlarm } from '../app-label';
 
 describe('アラーム名からアプリを引く', () => {
   it.each([
-    // builder: {env}-sakekasu-*
+    // builder: sakekasu-builder-{env}-*。旧い名前は {env}-sakekasu-*
+    ['sakekasu-builder-dev-slack-notifier-failure', 'builder'],
     ['dev-sakekasu-slack-notifier-failure', 'builder'],
     ['prod-sakekasu-health-check-frontend', 'builder'],
     // learning: リソース名は {env}-sakekasu-learning-*。builder の接頭辞より長いので先に当たる
