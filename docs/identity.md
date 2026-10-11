@@ -83,6 +83,9 @@ aws cognito-idp admin-create-user \
 `cdk.json` の `apps` に足す。戻り先（`callbackUrls`、`logoutUrls`）は、アプリが Cognito に渡す URL と
 完全に一致させる（末尾の `/` も区別される）。https か `http://localhost` だけを受け付ける。
 
+4 アプリの `logoutUrls` には入口の表紙 `https://sakekasu-builder.com/` も入れてある。各アプリでサインアウトしたら、
+アプリのサインイン画面ではなく入口の表紙へ戻すため（アプリは `logout_uri` にこれを渡す）。
+
 ## デプロイ
 
 main へのマージで `.github/workflows/deploy.yml` が cdkd で出す。ロールは 2 つある。

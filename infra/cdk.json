@@ -15,17 +15,17 @@
       {
         "name": "reinvent",
         "callbackUrls": ["https://reinvent.sakekasu-builder.com/"],
-        "logoutUrls": ["https://reinvent.sakekasu-builder.com/"]
+        "logoutUrls": ["https://reinvent.sakekasu-builder.com/", "https://sakekasu-builder.com/"]
       },
       {
         "name": "builder",
         "callbackUrls": ["https://sake.sakekasu-builder.com/", "http://localhost:5173/"],
-        "logoutUrls": ["https://sake.sakekasu-builder.com/", "http://localhost:5173/"]
+        "logoutUrls": ["https://sake.sakekasu-builder.com/", "https://sakekasu-builder.com/", "http://localhost:5173/"]
       },
       {
         "name": "kakeibo",
         "callbackUrls": ["https://kakeibo.sakekasu-builder.com/", "http://localhost:5173/"],
-        "logoutUrls": ["https://kakeibo.sakekasu-builder.com/", "http://localhost:5173/"]
+        "logoutUrls": ["https://kakeibo.sakekasu-builder.com/", "https://sakekasu-builder.com/", "http://localhost:5173/"]
       },
       {
         "name": "portal",
@@ -35,7 +35,7 @@
       {
         "name": "learning",
         "callbackUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"],
-        "logoutUrls": ["https://learning.sakekasu-builder.com/", "http://localhost:5173/"]
+        "logoutUrls": ["https://learning.sakekasu-builder.com/", "https://sakekasu-builder.com/", "http://localhost:5173/"]
       }
     ],
     "healthChecks": [
