@@ -1,4 +1,4 @@
-# apex（sakekasu-builder.com）と www の転送
+# apex（sakekasu-builder.com）と www：入口のページと転送
 
 builder を `sake.sakekasu-builder.com` へ移した（sakekasu-builder の docs/sake-subdomain.md）。
 apex と www は、これまで builder を配っていた Amplify Hosting に付いたままになっている。
@@ -7,8 +7,16 @@ Amplify アプリを消す。
 
 ## 作り
 
-- CloudFront Functions がビューアーリクエストで 301 を返すだけ。パスとクエリは保つ
-  （`https://sakekasu-builder.com/records?x=1` → `https://sake.sakekasu-builder.com/records?x=1`）
+- トップ（`/` と `/index.html`）は、4 アプリへの入口のページを 200 で返す（2026-10-11〜）。
+  iPhone でブックマークを 1 つにまとめるため。並べるアプリ・名前・絵文字は `infra/lib/portal.ts` の `PORTAL_APPS`
+  - 色は共通テーマ（`theme/sakekasu-theme.css`）から合成のたびに作る。ライト・ダークは OS に合わせる
+  - HTML は関数のコードに埋め込む。CloudFront Functions のコードは 10 KB までなので、テーマの CSS は丸ごと載せず、
+    使う色だけを変数にする（テストで大きさを見ている）
+  - 外のファイルは読まない。CSP で `default-src 'none'`（インラインの style だけ許す）
+  - 死活監視（[monitoring.md](monitoring.md)）の `portal` が 200 を見る
+- それ以外のパスは、CloudFront Functions がビューアーリクエストで 301 を返す。パスとクエリは保つ
+  （`https://sakekasu-builder.com/records?x=1` → `https://sake.sakekasu-builder.com/records?x=1`）。
+  builder を apex で使っていた頃のブックマークを生かすため
 - オリジンには届かない。CloudFront がオリジンを 1 つ求めるので、転送先を置いてある
 - HSTS（`max-age=31536000; includeSubDomains`）を付ける。Amplify が apex に出していたもの
 - 置き場所が builder ではなくこのリポジトリなのは、apex が 4 アプリ共通のドメインになるため。
