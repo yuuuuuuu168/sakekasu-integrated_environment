@@ -252,7 +252,7 @@ export class CdkdDeployStack extends cdk.Stack {
       statements: deployGuardrailStatements({
         account,
         app: 'integrated',
-        resourceNamePrefix: `${PREFIX}-`,
+        resourceNamePrefixes: [`${PREFIX}-`],
         protectedRoleNames: [CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME],
       }),
     });

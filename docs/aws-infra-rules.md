@@ -118,11 +118,15 @@ cdkd 用ロールは AdministratorAccess を持つ（builder と integrated は�
 | `DenyRoleWritesWithoutBoundary` ほか 2 つ | 下の「Permissions Boundary」 |
 | `DenyAgentRuntimesOutsideApp` | learning だけ。AgentCore Runtime はタグを付けていないので名前で絞る |
 
-置き場所: builder `infra/lib/deploy-guardrail.ts`（管理ポリシー）、integrated `infra/lib/deploy-guardrail.ts`
-（管理ポリシー）、kakeibo `infra/lib/deploy-guardrail.ts`、learning `infra/lib/deploy-guardrail.ts`、
-reinvent `app/infra/lib/deploy-guardrail.mjs`。
+中身は sakekasu-template の `infra/lib/deploy-guardrail.ts` 1 つで、builder、integrated、kakeibo、learning は
+同じファイルを `/template-sync` で取り込む（managed）。アプリごとの違い（接頭辞、境界の ARN、AgentCore Runtime の
+接頭辞、守る GitHub Actions のロール）は呼び出し側の引数で渡す。reinvent は infra が JavaScript なので取り込まず
+（`.template-sync.json` の `exclude`）、同じ中身を `app/infra/lib/deploy-guardrail.mjs` に写している。
+builder と integrated は管理ポリシー、ほかはインラインポリシーとして付ける。
 
-- 文を足すときは 5 リポジトリで同じにする。中身がずれると、どのアプリが何を守っているか追えなくなる
+- 文を変えるときはテンプレートを直して配り、reinvent の `.mjs` にも写す。各リポジトリでは直さない（次の同期で上書きされる）
+- ロールのポリシーは GitHub Actions のロールのスタック（手で `cdk deploy` するもの）にあるので、文を変えたら
+  5 アプリでそのスタックを入れ直すまで効かない
 - インラインポリシーは 1 ロールあたり合計 10,240 文字まで。超えるなら管理ポリシー（6,144 文字まで）に分ける
 - 否定の条件演算子（`StringNotEquals`、`ArnNotEquals` など）は、キーが無いときにも当たる。
   タグの無いリソースを巻き込みたくないときは `Null` を組む
