@@ -70,6 +70,8 @@ describe('転送の関数', () => {
       expect(APPS).toContain(app.label);
     }
     expect(APPS).toContain('href="/logout"');
+    // 各アプリに「入口でログイン済み」と伝え、サインインのボタンを省かせる
+    for (const app of PORTAL_APPS) expect(new URL(app.url).searchParams.get('sso')).toBe('1');
   });
 
   it('/apps に error 付きで戻ったら表紙へ', () => {
