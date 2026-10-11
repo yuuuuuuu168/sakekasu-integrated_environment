@@ -49,6 +49,12 @@ describe('転送の関数', () => {
     }
   });
 
+  it('入口のページは日本語として表示する（lang と日本語のフォントを先に）', () => {
+    expect(PORTAL).toContain('<html lang="ja">');
+    expect(PORTAL).toMatch(/font-family:'Hiragino Sans'/);
+    expect(PORTAL).not.toContain('system-ui');
+  });
+
   it('入口のページは外のものを読まない（CSP）', () => {
     const csp = runRedirect({ uri: '/', querystring: {} }).headers['content-security-policy'].value;
     expect(csp).toContain("default-src 'none'");

@@ -14,9 +14,13 @@ export interface PortalApp {
 export const PORTAL_APPS: PortalApp[] = [
   { label: '酒カス', icon: '🍶', url: 'https://sake.sakekasu-builder.com/' },
   { label: '家計簿', icon: '💰', url: 'https://kakeibo.sakekasu-builder.com/' },
-  { label: '学習', icon: '📚', url: 'https://learning.sakekasu-builder.com/' },
+  { label: 'learning', icon: '📚', url: 'https://learning.sakekasu-builder.com/' },
   { label: 're:Invent', icon: '☁️', url: 'https://reinvent.sakekasu-builder.com/' },
 ];
+
+/** 日本語の字形のフォント。iPhone・Mac はヒラギノ、Windows は游ゴシックかメイリオ、それ以外は Noto や IPA */
+const JA_FONTS =
+  "'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','YuGothic','Meiryo','Noto Sans JP','Noto Sans CJK JP','IPAGothic',sans-serif";
 
 function escapeHtml(value: string): string {
   return value
@@ -61,7 +65,8 @@ export function buildPortalHtml(theme: { light: ThemeColors; dark: ThemeColors }
     `:root{color-scheme:light dark;${vars(theme.light)}}` +
     `@media (prefers-color-scheme:dark){:root{${vars(theme.dark)}}}` +
     '*{box-sizing:border-box}' +
-    "body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:'Hiragino Sans','Noto Sans JP',system-ui,sans-serif}" +
+    // 日本語のフォントを先に並べる。system-ui を前に置くと、中国語の字形のフォントが選ばれる環境がある
+    `body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:${JA_FONTS}}` +
     'main{max-width:30rem;margin:0 auto;padding:3rem 1rem}' +
     'h1{margin:0 0 1.5rem;font-size:1.5rem;border-bottom:2px solid var(--gold-line);padding-bottom:.5rem}' +
     'ul{list-style:none;margin:0;padding:0;display:grid;gap:.75rem}' +

@@ -10,6 +10,7 @@ Amplify アプリを消す。
 - トップ（`/` と `/index.html`）は、4 アプリへの入口のページを 200 で返す（2026-10-11〜）。
   iPhone でブックマークを 1 つにまとめるため。並べるアプリ・名前・絵文字は `infra/lib/portal.ts` の `PORTAL_APPS`
   - 色は共通テーマ（`theme/sakekasu-theme.css`）から合成のたびに作る。ライト・ダークは OS に合わせる
+  - フォントは日本語の字形のもの（ヒラギノ、游ゴシック、メイリオ、Noto Sans JP など）を先に並べる。`system-ui` は使わない（中国語の字形になる環境がある）
   - HTML は関数のコードに埋め込む。CloudFront Functions のコードは 10 KB までなので、テーマの CSS は丸ごと載せず、
     使う色だけを変数にする（テストで大きさを見ている）
   - 外のファイルは読まない。CSP で `default-src 'none'`（インラインの style だけ許す）
