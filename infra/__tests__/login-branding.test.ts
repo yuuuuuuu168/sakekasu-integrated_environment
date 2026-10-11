@@ -56,8 +56,8 @@ describe('ログイン画面のブランディング', () => {
     expect(pageBackground.darkMode.color).toBe('1a1a2eff');
   });
 
-  it('ライト・ダークは OS に合わせ、既定の背景の模様は出さない', () => {
-    expect(branding.categories.global.colorSchemeMode).toBe('DYNAMIC');
+  it('色はダークに固定し、既定の背景の模様は出さない', () => {
+    expect(branding.categories.global.colorSchemeMode).toBe('DARK');
     expect(branding.components.pageBackground.image.enabled).toBe(false);
   });
 

@@ -52,7 +52,8 @@ function bothModes<T>(build: (c: (name: string) => string) => T, theme: { light:
  * __tests__/fixtures/cognito-default-branding-settings.json）と同じで、色だけを差し替える。
  * 既定と同じ形であることはテストで確かめている。
  *
- * - ライト・ダークは利用者の OS に合わせる（colorSchemeMode: DYNAMIC）。4 アプリの画面と同じ
+ * - 色はダークに固定する（colorSchemeMode: DARK）。DYNAMIC だと OS の設定や時刻で白い画面が出るので、
+ *   利用者の指定で黒に揃えた。入口のページ（portal.ts）も同じ
  * - 背景の画像（Cognito の既定の模様）は切り、共通テーマの地の色だけにする
  * - フォント・角丸・ロゴの位置などは既定のまま
  */
@@ -163,7 +164,7 @@ export function buildLoginBranding(theme: { light: ThemeColors; dark: ThemeColor
         ],
       },
       global: {
-        colorSchemeMode: 'DYNAMIC',
+        colorSchemeMode: 'DARK',
         pageFooter: { enabled: false },
         pageHeader: { enabled: false },
         spacingDensity: 'REGULAR',
