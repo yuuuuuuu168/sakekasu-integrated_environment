@@ -113,8 +113,10 @@ export function buildPortalParts(theme: { light: ThemeColors; dark: ThemeColors 
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="robots" content="noindex">' +
     '<meta name="apple-mobile-web-app-title" content="sakekasu">' +
-    // ホーム画面のアイコン。CloudFront Functions が返す（apex-redirect-stack.ts の iconFunctionCode）
-    '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' +
+    // ホーム画面のアイコンとマニフェスト。CloudFront Functions が返す（apex-redirect-stack.ts の iconFunctionCode）。
+    // iOS は一度アイコンが無いと覚えると、同じ URL を取り直さないことがあるので、URL に版を付ける
+    `<link rel="manifest" href="${PORTAL_MANIFEST_PATH}">` +
+    `<link rel="apple-touch-icon" sizes="192x192" href="${PORTAL_ICON_URL}">` +
     `<meta name="theme-color" content="#${theme.dark.bg}">` +
     '<title>sakekasu</title>';
   const chips = apps.map((app) => `<li>${escapeHtml(app.icon)} ${escapeHtml(app.label)}</li>`).join('');
@@ -136,6 +138,33 @@ export function buildPortalParts(theme: { light: ThemeColors; dark: ThemeColors 
     '<main class="list"><header><h1>sakekasu</h1><a class="out" href="/logout">ログアウト</a></header>' +
     `<ul class="apps">${items}</ul></main>`;
   return { head, css, top, apps: list };
+}
+
+/** ホーム画面のアイコンの URL。画像を差し替えたら v= を上げる */
+export const PORTAL_ICON_URL = '/apple-touch-icon.png?v=2';
+export const PORTAL_MANIFEST_PATH = '/manifest.webmanifest';
+
+/**
+ * 入口のマニフェスト。新しい iOS はホーム画面に追加するとき、apple-touch-icon よりマニフェストの
+ * アイコンを先に見る（無いと頭文字のアイコンを作る）。display は browser にして、追加したアイコンは
+ * ふだんのブラウザで開く（Web アプリとして開くと、ログインの状態がブラウザと別になるため）
+ */
+export function buildPortalManifest(theme: { light: ThemeColors; dark: ThemeColors }): string {
+  return JSON.stringify({
+    name: 'sakekasu',
+    short_name: 'sakekasu',
+    lang: 'ja',
+    start_url: '/',
+    scope: '/',
+    display: 'browser',
+    background_color: `#${theme.dark.bg}`,
+    theme_color: `#${theme.dark.bg}`,
+    icons: [{ src: PORTAL_ICON_URL, sizes: '192x192', type: 'image/png', purpose: 'any' }],
+  });
+}
+
+export function portalManifestFromThemeFile(): string {
+  return buildPortalManifest(readTheme(fs.readFileSync(THEME_CSS_PATH, 'utf8')));
 }
 
 /** 1 枚のページにつなぐ。関数の中の page() と同じつなぎ方（テストと見た目の確認に使う） */
