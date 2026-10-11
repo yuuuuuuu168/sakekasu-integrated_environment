@@ -112,20 +112,56 @@ describe('通知の経路', () => {
     expect(JSON.stringify(template.toJSON())).not.toMatch(/hooks\.slack\.com/);
   });
 
-  it('Slack 通知 Lambda の SSM の読み取りは、そのパラメータ 1 つだけ', () => {
+  it('SSM の読み取りは、Slack と DevOps Agent の Webhook のパラメータ 1 つずつだけ', () => {
     const policies = Object.values(template.findResources('AWS::IAM::Policy')) as Resource[];
     const ssm = policies
       .flatMap((p) => p.Properties.PolicyDocument.Statement as Array<Record<string, any>>)
       .filter((s) => JSON.stringify(s.Action).includes('ssm:'));
-    expect(ssm).toHaveLength(1);
-    expect(ssm[0].Action).toBe('ssm:GetParameter');
-    expect(ssm[0].Resource).toBe(
+    expect(ssm).toHaveLength(2);
+    for (const s of ssm) expect(s.Action).toBe('ssm:GetParameter');
+    expect(ssm.map((s) => s.Resource).sort()).toEqual([
+      `arn:aws:ssm:ap-northeast-1:${ACCOUNT}:parameter/sakekasu-integrated/devops-agent/webhook`,
       `arn:aws:ssm:ap-northeast-1:${ACCOUNT}:parameter/sakekasu-integrated/monitoring/slack-webhook-url`,
-    );
+    ]);
   });
 
   it('Slack 通知の失敗そのものを監視する', () => {
     const a = alarm('sakekasu-integrated-slack-notifier-failure');
+    expect(a.Properties).toMatchObject({ MetricName: 'Errors', Namespace: 'AWS/Lambda', Threshold: 1 });
+  });
+});
+
+describe('DevOps Agent への転送', () => {
+  it('転送 Lambda も同じトピックを購読している（4 アプリのアラームがすべて調査に回る）', () => {
+    template.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'lambda',
+      TopicArn: TOPIC_ARN_REF,
+      Endpoint: { 'Fn::GetAtt': [Match.stringLikeRegexp('^DevOpsAgentWebhookFunction'), 'Arn'] },
+    });
+  });
+
+  it('Webhook の URL と鍵はコードに持たず、SSM のパラメータ名だけを渡す', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'sakekasu-integrated-devops-agent-webhook',
+      Environment: {
+        Variables: {
+          WEBHOOK_PARAMETER_NAME: '/sakekasu-integrated/devops-agent/webhook',
+          SELF_ALARM_NAME: 'sakekasu-integrated-devops-agent-webhook-failure',
+        },
+      },
+    });
+    expect(JSON.stringify(template.toJSON())).not.toMatch(/event-ai\.[a-z0-9-]+\.api\.aws/);
+  });
+
+  it('アラームが一斉に鳴っても、調査が同時に立ち上がるのは 2 本まで', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'sakekasu-integrated-devops-agent-webhook',
+      ReservedConcurrentExecutions: 2,
+    });
+  });
+
+  it('転送の失敗を監視し、その名前を転送 Lambda に渡して捨てさせる', () => {
+    const a = alarm('sakekasu-integrated-devops-agent-webhook-failure');
     expect(a.Properties).toMatchObject({ MetricName: 'Errors', Namespace: 'AWS/Lambda', Threshold: 1 });
   });
 });
@@ -246,9 +282,10 @@ describe('監視の監視', () => {
 });
 
 describe('Lambda とロググループ', () => {
-  it('関数名はどちらも sakekasu-integrated- で始まり、Node.js 22 で動く', () => {
+  it('関数名はどれも sakekasu-integrated- で始まり、Node.js 22 で動く', () => {
     const fns = Object.values(template.findResources('AWS::Lambda::Function')) as Resource[];
     expect(fns.map((f) => f.Properties.FunctionName).sort()).toEqual([
+      'sakekasu-integrated-devops-agent-webhook',
       'sakekasu-integrated-health-check',
       'sakekasu-integrated-slack-notifier',
     ]);
@@ -258,7 +295,11 @@ describe('Lambda とロググループ', () => {
   it('ロググループを明示して作り、保持は 30 日。スタックを消してもログは残す', () => {
     const groups = template.findResources('AWS::Logs::LogGroup');
     const names = Object.values(groups).map((g) => (g as Resource).Properties.LogGroupName).sort();
-    expect(names).toEqual(['/aws/lambda/sakekasu-integrated-health-check', '/aws/lambda/sakekasu-integrated-slack-notifier']);
+    expect(names).toEqual([
+      '/aws/lambda/sakekasu-integrated-devops-agent-webhook',
+      '/aws/lambda/sakekasu-integrated-health-check',
+      '/aws/lambda/sakekasu-integrated-slack-notifier',
+    ]);
     for (const g of Object.values(groups)) {
       expect((g as Resource).Properties.RetentionInDays).toBe(30);
       expect((g as { DeletionPolicy?: string }).DeletionPolicy).toBe('Retain');
@@ -272,6 +313,7 @@ describe('Lambda とロググループ', () => {
   it('ロール名は sakekasu-integrated-app- で始まる（cdkd 用ロールが作れる範囲）', () => {
     const roles = Object.values(template.findResources('AWS::IAM::Role')) as Resource[];
     expect(roles.map((r) => r.Properties.RoleName).sort()).toEqual([
+      'sakekasu-integrated-app-devops-agent-webhook',
       'sakekasu-integrated-app-health-check',
       'sakekasu-integrated-app-slack-notifier',
     ]);
@@ -284,7 +326,7 @@ describe('Lambda とロググループ', () => {
     const logStatements = (Object.values(template.findResources('AWS::IAM::Policy')) as Resource[])
       .flatMap((p) => p.Properties.PolicyDocument.Statement as Array<Record<string, any>>)
       .filter((s) => JSON.stringify(s.Action).includes('logs:'));
-    expect(logStatements).toHaveLength(2);
+    expect(logStatements).toHaveLength(3);
     for (const s of logStatements) {
       expect(s.Action).toEqual(['logs:CreateLogStream', 'logs:PutLogEvents']);
       expect(JSON.stringify(s.Resource)).toMatch(/LogGroup/);

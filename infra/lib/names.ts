@@ -33,6 +33,12 @@ export const ALERT_TOPIC_NAME = `${PREFIX}-alerts`;
 export const SLACK_WEBHOOK_PARAMETER_NAME = `/${PREFIX}/monitoring/slack-webhook-url`;
 
 /**
+ * AWS DevOps Agent の Webhook の URL と署名鍵を JSON（`{"webhookUrl": ..., "signingSecret": ...}`）で置く
+ * SSM パラメータ（SecureString）。人が手で登録する（docs/monitoring.md の「DevOps Agent への転送」）
+ */
+export const DEVOPS_AGENT_WEBHOOK_PARAMETER_NAME = `/${PREFIX}/devops-agent/webhook`;
+
+/**
  * 監視の Lambda やイベント転送が使うロールの名前の接頭辞。cdkd 用ロールが作れるロールはこの名前に限る。
  * `${PREFIX}-*` のままにしないのは、GitHub Actions のロール（`${PREFIX}-github-actions-*`）と
  * 名前が重なり、許可の範囲にデプロイ用ロール自身が入ってしまうため
