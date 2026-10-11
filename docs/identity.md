@@ -41,7 +41,7 @@
 | クライアント ID: builder | `iuv75jactiu7ffumrj71khmen` |
 | クライアント ID: kakeibo | `2bsth1alaafgp1utsq3evraib5` |
 | クライアント ID: learning | `290il92ijts07ap3unkae5ql8o` |
-| クライアント ID: portal | 未デプロイ（入口 `sakekasu-builder.com` 用。[apex-redirect.md](apex-redirect.md)。出たら cdk.json の `portalClientId` にも書く） |
+| クライアント ID: portal | `44f96q5enee70cn565bapma9op`（入口 `sakekasu-builder.com` 用。[apex-redirect.md](apex-redirect.md)。cdk.json の `portalClientId` にも書いてある） |
 | `auth.sakekasu-builder.com` のゾーン ID | `Z05756913NB3G0RNTABHH`（2026-10-03 に親から委任済み） |
 | ログイン画面の証明書（us-east-1） | `67bb48e9-8b29-4a94-8753-af9877847205`（cdk.json の `authCertificateId`。ARN はアカウントと組み立てる）（2026-10-03 にコンソールで作成） |
 
