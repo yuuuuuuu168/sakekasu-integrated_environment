@@ -94,7 +94,7 @@ describe('IdentityStack: アプリクライアント', () => {
   it('ログイン画面を通さないログインを許さず、トークンの更新だけを許す', () => {
     const clients = template().findResources('AWS::Cognito::UserPoolClient');
     for (const client of Object.values(clients)) {
-      expect(client.Properties.ExplicitAuthFlows).toEqual(['ALLOW_REFRESH_TOKEN_AUTH', 'ALLOW_USER_AUTH']);
+      expect(client.Properties.ExplicitAuthFlows).toEqual(['ALLOW_REFRESH_TOKEN_AUTH']);
     }
   });
 
