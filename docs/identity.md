@@ -7,9 +7,11 @@
 
 - ユーザープールは 1 つ。新規登録は受け付けず、ユーザーは管理者が CLI で作る
 - TOTP の MFA を必須にする。パスワードは 16 文字以上（英大文字・英小文字・数字を含む）
+- パスキーでも入れる（[下の節](#パスキーで入る)）。本人確認（Face ID など）つきのパスキーは、それだけで MFA を満たす。
+  パスワード + TOTP は予備として残す
 - ログイン画面は Cognito のマネージドログインを `auth.sakekasu-builder.com` で出す
 - 各アプリはアプリクライアントを 1 つずつ持ち、ログイン画面へリダイレクトする（認可コード + PKCE）
-- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
+- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）と選択式のログイン（`ALLOW_USER_AUTH`、パスキーに要る）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
 - リフレッシュトークンは 90 日。iPhone のホーム画面に置いた Web アプリはアプリごと（Safari とも別）にセッションが分かれるので、入り直しを減らすため長めにしている
 - ログイン画面のドメインにセッションが残るので、1 つのアプリでログインすれば、
   ほかのアプリは入力なしで入れる
@@ -144,31 +146,44 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
   `describe-managed-login-branding-by-client --return-merged-resources` で取ったもの）と同じにしてあり、
   テストで確かめている。Cognito が項目を足したら、取り直して合わせる
 
-## パスキーを試す（2026-10-11〜）
+## パスキーで入る
 
-### 1 回目：戻した
+1Password（iPhone では「設定」→「一般」→「自動入力とパスワード」で取得元にしておく）にパスキーを保存して、
+Face ID だけで入る。サーバー側の設定は `infra/lib/identity-stack.ts` にある。
 
-パスキー（1Password に保存して Face ID で入る）を足した。最初の認証にパスキーを加え、本人確認つきのパスキーを
-MFA として数える設定（`WebAuthnFactorConfiguration` = `MULTI_FACTOR_WITH_USER_VERIFICATION`）にし、
-アプリクライアントに `ALLOW_USER_AUTH` を足した。デプロイ後、ログイン画面がユーザー名とパスワードを
-別々に入れる形に変わり、パスワードの確認（CloudTrail の `verifyPassword_POST`）が 400 `Unexpected exception`
-で通らなくなった。画面には「Incorrect username or password」と出る。前日まで同じ端末で通っていたパスワードだったので、戻した。
-
-### 2 回目：1 つずつ足して切り分ける
-
-利用者は本人だけなので、いまのユーザープールで試す。どの設定でパスワードが通らなくなるのかを見るため、
-1 回のデプロイで 1 つずつ足し、そのたびにログイン画面からパスワード + TOTP で入れるかを確かめる。
-通らなければその段階を戻す。何度も失敗すると Cognito が一時的にロックするので、各段階で試すのは 1〜2 回にする。
-
-| 段階 | 足すもの | 結果 |
+| 設定 | 値 | 理由 |
 | --- | --- | --- |
-| 1 | クライアントに `ALLOW_USER_AUTH`（最初の認証はパスワードだけ） | **通らない**。1 回目と同じく `verifyPassword_POST` が 400 `Unexpected exception`。戻した |
-| 2 | 最初の認証にパスキー、RP ID、本人確認 `required`（MFA としては数えない） | 未実施 |
-| 3 | `WebAuthnFactorConfiguration` = `MULTI_FACTOR_WITH_USER_VERIFICATION` | 未実施 |
+| 最初の認証 | パスワードかパスキー | パスキーが使えないときの予備にパスワード + TOTP を残す |
+| 本人確認（`WebAuthnUserVerification`） | `required` | Face ID などの本人確認ができるパスキーだけを受け付ける |
+| MFA としての扱い（`WebAuthnFactorConfiguration`） | `MULTI_FACTOR_WITH_USER_VERIFICATION` | 本人確認つきのパスキーを MFA として数える。これが無いと、MFA 必須のプールではパスキーで入れない。L2 に項目が無いので L1 で入れている |
+| RP ID | ログイン画面のドメイン（`auth.sakekasu-builder.com`） | マネージドログインで使うときの決まり。ドメインを変えると登録済みのパスキーは使えなくなる |
 
-段階 1 で、パスキーの設定が無くても選択式のログイン（`ALLOW_USER_AUTH`）だけで同じ失敗が出た。
-原因はパスキーではなく、このユーザープールでマネージドログインが選択式になったときのパスワードの確認にある。
-同じ端末・同じパスワードで、従来の 1 画面のログイン（メールとパスワード → TOTP）は直前・直後とも通っている。
+### 登録する（ユーザーごとに一度）
+
+管理者が作ったユーザーには、Cognito は自分からはパスキーの登録を勧めない。登録の画面を直接開く。
+
+1. いつも通りにどれかのアプリでログインする（パスワード + TOTP）
+2. 同じブラウザ（iPhone なら、ホーム画面のアプリではなくブラウザのタブ）で次を開く。reinvent のクライアントの例
+
+   ```
+   https://auth.sakekasu-builder.com/passkeys/add?client_id=7thbqs1omkqdgo6k922sqhefdi&redirect_uri=https%3A%2F%2Freinvent.sakekasu-builder.com%2F
+   ```
+
+3. 保存先を聞かれたら 1Password を選ぶ
+
+パスキーは 1Password で同期されるので、ほかの端末で登録し直す必要はない。
+
+
+## パスキーを入れたときの経緯（2026-10-11）
+
+1 回目に入れたとき、デプロイ後のログインでパスワードの確認（CloudTrail の `verifyPassword_POST`）が
+400 `Unexpected exception` になり、画面に「Incorrect username or password」と出たので戻した。
+選択式のログイン（`ALLOW_USER_AUTH`）だけを足して切り分けても同じだったが、あとでスクリーンショットを
+見比べると、失敗した 2 回はメールアドレス欄にこのプールのユーザーではない別のアドレスが入っていた。
+
+選択式のログインでは、メールアドレスだけを先に入れる画面になる。パスワード管理アプリやブラウザが別のアドレスを
+候補に出すと、それがそのまま入る。存在しないユーザーでも `preventUserExistenceErrors` により「Incorrect username
+or password」と出るので、パスワードの誤りと見分けがつかない。ログインに失敗したら、まずメールアドレス欄を確かめる。
 
 ## まだやっていないこと
 

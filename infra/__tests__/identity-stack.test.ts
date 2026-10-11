@@ -39,9 +39,24 @@ describe('IdentityStack: ユーザープール', () => {
     });
   });
 
-  it('最初の認証はパスワードだけ（パスキーは使わない）', () => {
+  it('パスキーでも入れ、本人確認つきのパスキーを MFA として数える', () => {
     template().hasResourceProperties('AWS::Cognito::UserPool', {
-      Policies: Match.objectLike({ SignInPolicy: { AllowedFirstAuthFactors: ['PASSWORD'] } }),
+      MfaConfiguration: 'ON',
+      Policies: Match.objectLike({
+        SignInPolicy: { AllowedFirstAuthFactors: Match.arrayEquals(['PASSWORD', 'WEB_AUTHN']) },
+      }),
+      WebAuthnUserVerification: 'required',
+      WebAuthnFactorConfiguration: 'MULTI_FACTOR_WITH_USER_VERIFICATION',
+    });
+  });
+
+  // マネージドログインでは、パスキーの RP ID をログイン画面のドメインと一致させる決まり
+  it('パスキーの RP ID はログイン画面のドメイン', () => {
+    template().hasResourceProperties('AWS::Cognito::UserPool', {
+      WebAuthnRelyingPartyID: 'test-prefix.auth.ap-northeast-1.amazoncognito.com',
+    });
+    template(CUSTOM).hasResourceProperties('AWS::Cognito::UserPool', {
+      WebAuthnRelyingPartyID: 'auth.example.com',
     });
   });
 
@@ -90,11 +105,11 @@ describe('IdentityStack: アプリクライアント', () => {
   });
 
   // ExplicitAuthFlows を省くと Cognito は SRP・カスタム認証・更新の 3 つを有効にする。
-  // ログイン画面を通さないパスワードのログインを閉じるため、更新だけを明示する
-  it('ログイン画面を通さないログインを許さず、トークンの更新だけを許す', () => {
+  // ログイン画面を通さないパスワードのログインを閉じるため、更新と選択式のログイン（パスキーに要る）だけを明示する
+  it('SRP とカスタム認証を許さず、トークンの更新と選択式のログインだけを許す', () => {
     const clients = template().findResources('AWS::Cognito::UserPoolClient');
     for (const client of Object.values(clients)) {
-      expect(client.Properties.ExplicitAuthFlows).toEqual(['ALLOW_REFRESH_TOKEN_AUTH']);
+      expect(client.Properties.ExplicitAuthFlows).toEqual(['ALLOW_REFRESH_TOKEN_AUTH', 'ALLOW_USER_AUTH']);
     }
   });
 
