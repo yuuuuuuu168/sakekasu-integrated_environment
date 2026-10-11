@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as cdk from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
-import { ApexRedirectStack, redirectFunctionCode } from '../lib/apex-redirect-stack';
+import * as fs from 'node:fs';
+import { APPLE_TOUCH_ICON_PATH, ApexRedirectStack, iconFunctionCode, redirectFunctionCode } from '../lib/apex-redirect-stack';
 import { APEX_DOMAINS } from '../lib/names';
 import { PORTAL_APPS, portalPartsFromThemeFile, renderPage } from '../lib/portal';
 
@@ -106,7 +107,17 @@ describe('転送の関数', () => {
     const csp = runRedirect({ uri: '/', querystring: {} }).headers['content-security-policy'].value;
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("frame-ancestors 'none'");
-    for (const html of [TOP, APPS]) expect(html).not.toMatch(/<script|<link|src=|url\(/);
+    // 読むのはホーム画面のアイコン（同じオリジン）だけ
+    expect(csp).toContain("img-src 'self'");
+    for (const html of [TOP, APPS]) {
+      expect(html.replace('<link rel="apple-touch-icon" href="/apple-touch-icon.png">', '')).not.toMatch(
+        /<script|<link|src=|url\(/,
+      );
+    }
+  });
+
+  it('入口のページはホーム画面のアイコンを指す', () => {
+    for (const html of [TOP, APPS]) expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png">');
   });
 
   it('関数のコードは CloudFront Functions の上限（10 KB）に収まり、ASCII だけ', () => {
@@ -135,6 +146,28 @@ describe('転送の関数', () => {
   });
 });
 
+describe('ホーム画面のアイコン', () => {
+  const png = fs.readFileSync(APPLE_TOUCH_ICON_PATH);
+  const code = iconFunctionCode(png);
+  const res = (new Function(`${code}; return handler;`)() as (event: unknown) => CfResponse)({
+    request: { uri: '/apple-touch-icon.png', querystring: {} },
+  });
+
+  it('180x180 の PNG をそのまま返す', () => {
+    expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    expect(png.readUInt32BE(16)).toBe(180);
+    expect(png.readUInt32BE(20)).toBe(180);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type'].value).toBe('image/png');
+    expect(res.body?.encoding).toBe('base64');
+    expect(Buffer.from(res.body!.data, 'base64').equals(png)).toBe(true);
+  });
+
+  it('関数のコードは CloudFront Functions の上限（10 KB）に収まる', () => {
+    expect(Buffer.byteLength(code, 'utf8')).toBeLessThan(10 * 1024);
+  });
+});
+
 describe('ApexRedirectStack', () => {
   it('証明書が無いうちは独自ドメインを付けない（Amplify と同じドメインを取り合わない）', () => {
     const template = Template.fromStack(
@@ -151,8 +184,16 @@ describe('ApexRedirectStack', () => {
           ViewerProtocolPolicy: 'redirect-to-https',
           FunctionAssociations: [Match.objectLike({ EventType: 'viewer-request' })],
         }),
+        CacheBehaviors: [
+          Match.objectLike({
+            PathPattern: '/apple-touch-icon*',
+            ViewerProtocolPolicy: 'redirect-to-https',
+            FunctionAssociations: [Match.objectLike({ EventType: 'viewer-request' })],
+          }),
+        ],
       }),
     });
+    template.resourceCountIs('AWS::CloudFront::Function', 2);
   });
 
   it('証明書を渡すと apex と www を付け、TLS 1.2 以上にする', () => {

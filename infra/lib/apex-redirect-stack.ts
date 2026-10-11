@@ -3,6 +3,9 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import type { Construct } from 'constructs';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PREFIX } from './names';
 import { portalPartsFromThemeFile, type PortalParts } from './portal';
 
@@ -34,6 +37,13 @@ export interface ApexRedirectStackProps extends cdk.StackProps {
    */
   customDomain?: { domainNames: string[]; certificateArn: string };
 }
+
+/**
+ * iPhone の「ホーム画面に追加」で使うアイコン（180x180 の PNG）。
+ * 元は同じディレクトリの apple-touch-icon.html で、Chromium で 180x180 に撮って 64 色に減らしたもの。
+ * 関数のコードに base64 で埋め込むので、4 KB ほどに抑えてある
+ */
+export const APPLE_TOUCH_ICON_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '../assets/apple-touch-icon.png');
 
 /** JS の文字列リテラルにする。ASCII だけにして、関数のコードの文字コードに左右されないようにする */
 function jsString(value: string): string {
@@ -82,7 +92,7 @@ function page(body, cache) {
     headers: {
       'content-type': { value: 'text/html; charset=utf-8' },
       'strict-transport-security': HSTS,
-      'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
+      'content-security-policy': { value: "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" },
       'x-content-type-options': { value: 'nosniff' },
       'referrer-policy': { value: 'no-referrer' },
       'cache-control': { value: cache }
@@ -131,6 +141,30 @@ function handler(event) {
 }
 
 /**
+ * ホーム画面のアイコンを返す CloudFront Functions のコード。入口のページとは別の関数にする。
+ * 関数のコードは 10 KB までで、入口のページだけで 8 KB 近く使っているため。
+ * iPhone は `<link rel="apple-touch-icon">` が無くても /apple-touch-icon.png（と -precomposed.png）を
+ * 取りに来るので、/apple-touch-icon で始まるパスにはどれも同じ画像を返す。
+ */
+export function iconFunctionCode(png: Buffer): string {
+  return `var ICON = '${png.toString('base64')}';
+function handler(event) {
+  return {
+    statusCode: 200,
+    statusDescription: 'OK',
+    headers: {
+      'content-type': { value: 'image/png' },
+      'strict-transport-security': { value: 'max-age=31536000; includeSubDomains' },
+      'x-content-type-options': { value: 'nosniff' },
+      'cache-control': { value: 'max-age=86400' }
+    },
+    body: { encoding: 'base64', data: ICON }
+  };
+}
+`;
+}
+
+/**
  * apex（sakekasu-builder.com）と www。トップは 4 アプリへの入口のページを返し、それ以外のパスは
  * builder の画面（sake.sakekasu-builder.com）へ転送する。手順は docs/apex-redirect.md。
  *
@@ -159,19 +193,37 @@ export class ApexRedirectStack extends cdk.Stack {
       ),
     });
 
+    const icon = new cloudfront.Function(this, 'IconFunction', {
+      functionName: `${PREFIX}-apex-icon`,
+      comment: 'Home screen icon for the portal (apple-touch-icon)',
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      code: cloudfront.FunctionCode.fromInline(iconFunctionCode(fs.readFileSync(APPLE_TOUCH_ICON_PATH))),
+    });
+
+    // 関数が必ず応答を返すので、オリジンには届かない（defaultBehavior と同じ）
+    const target = new origins.HttpOrigin(props.targetDomain);
     const custom = props.customDomain;
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
       comment: `${PREFIX} apex redirect`,
       defaultBehavior: {
         // ビューアーリクエストの関数が必ず応答を返すので、オリジンには届かない。
         // CloudFront はオリジンを 1 つ求めるので、転送先を置いておく
-        origin: new origins.HttpOrigin(props.targetDomain),
+        origin: target,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
         functionAssociations: [
           { function: redirect, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST },
         ],
+      },
+      additionalBehaviors: {
+        '/apple-touch-icon*': {
+          origin: target,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          functionAssociations: [{ function: icon, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST }],
+        },
       },
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       priceClass: cloudfront.PriceClass.PRICE_CLASS_200,

@@ -113,6 +113,8 @@ export function buildPortalParts(theme: { light: ThemeColors; dark: ThemeColors 
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta name="robots" content="noindex">' +
     '<meta name="apple-mobile-web-app-title" content="sakekasu">' +
+    // ホーム画面のアイコン。CloudFront Functions が返す（apex-redirect-stack.ts の iconFunctionCode）
+    '<link rel="apple-touch-icon" href="/apple-touch-icon.png">' +
     `<meta name="theme-color" content="#${theme.dark.bg}">` +
     '<title>sakekasu</title>';
   const chips = apps.map((app) => `<li>${escapeHtml(app.icon)} ${escapeHtml(app.label)}</li>`).join('');

@@ -34,6 +34,11 @@ Amplify アプリを消す。
     使う色だけを変数にし、2 枚のページで CSS を共有する（テストで大きさを見ている）
   - 外のファイルもスクリプトも読まない。CSP で `default-src 'none'`（インラインの style だけ許す）。青海波は CSS のグラデーションで描く
   - 死活監視（[monitoring.md](monitoring.md)）の `portal` が `/` の 200 を見る
+  - iPhone の「ホーム画面に追加」のアイコン（180x180 の PNG、🍶 と青海波）を `/apple-touch-icon*` で返す（2026-10-11〜）。
+    返すのは入口とは別の CloudFront Functions（`sakekasu-integrated-apex-icon`）で、画像を base64 でコードに埋め込んでいる。
+    入口の関数だけで 10 KB の上限の 8 割ほどを使っているため。画像は `infra/assets/apple-touch-icon.png`、
+    元の HTML は同じ場所の `apple-touch-icon.html`（Chromium で 180x180 に撮り、64 色に減らして 4 KB ほどにした）。
+    入口のページは `<link rel="apple-touch-icon">` でこれを指し、CSP は `img-src 'self'` だけ足した
 - それ以外のパスは、CloudFront Functions がビューアーリクエストで 301 を返す。パスとクエリは保つ
   （`https://sakekasu-builder.com/records?x=1` → `https://sake.sakekasu-builder.com/records?x=1`）。
   builder を apex で使っていた頃のブックマークを生かすため
