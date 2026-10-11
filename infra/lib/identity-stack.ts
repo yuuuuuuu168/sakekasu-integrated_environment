@@ -23,6 +23,12 @@ export interface IdentityStackProps extends cdk.StackProps {
   customDomain?: CustomAuthDomain;
 }
 
+/**
+ * パスキーの登録画面（/passkeys/add）を開くときに使うアプリ。このクライアントだけに
+ * aws.cognito.signin.user.admin のスコープを許す（docs/identity.md の「パスキーで入る」）
+ */
+export const PASSKEY_REGISTRATION_APP = 'reinvent';
+
 /** パスワードの最小の長さ。利用者の指定で 16 文字以上にしている */
 export const PASSWORD_MIN_LENGTH = 16;
 
@@ -125,7 +131,18 @@ export class IdentityStack extends cdk.Stack {
         authFlows: {},
         oAuth: {
           flows: { authorizationCodeGrant: true },
-          scopes: [cognito.OAuthScope.OPENID, cognito.OAuthScope.EMAIL, cognito.OAuthScope.PROFILE],
+          scopes: [
+            cognito.OAuthScope.OPENID,
+            cognito.OAuthScope.EMAIL,
+            cognito.OAuthScope.PROFILE,
+            /*
+             * パスキーの登録は、本人のアクセストークンで行う操作（StartWebAuthnRegistration）。
+             * このスコープが無いクライアントで /passkeys/add を開いたら、Cognito が
+             * Unexpected exception を返して登録画面を出さずにアプリへ戻った（2026-10-11）。それへの対処
+             * 許すのは登録に使う 1 つだけ。アプリがふだん求めるスコープには入らない
+             */
+            ...(app.name === PASSKEY_REGISTRATION_APP ? [cognito.OAuthScope.COGNITO_ADMIN] : []),
+          ],
           callbackUrls: app.callbackUrls,
           logoutUrls: app.logoutUrls,
         },
