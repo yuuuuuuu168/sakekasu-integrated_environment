@@ -7,9 +7,12 @@
 
 - ユーザープールは 1 つ。新規登録は受け付けず、ユーザーは管理者が CLI で作る
 - TOTP の MFA を必須にする。パスワードは 16 文字以上（英大文字・英小文字・数字を含む）
+- パスキーでも入れる（[下の節](#パスキーで入る)）。本人確認（Face ID など）つきのパスキーは、それだけで MFA を満たす。
+  パスワード + TOTP は予備として残す
 - ログイン画面は Cognito のマネージドログインを `auth.sakekasu-builder.com` で出す
 - 各アプリはアプリクライアントを 1 つずつ持ち、ログイン画面へリダイレクトする（認可コード + PKCE）
-- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
+- アプリクライアントが許すのはトークンの更新（`ALLOW_REFRESH_TOKEN_AUTH`）と選択式のログイン（`ALLOW_USER_AUTH`、パスキーに要る）だけ。ログイン画面を通さない SRP やカスタム認証は閉じてある（`ExplicitAuthFlows` を省くと Cognito はこれらを有効にするので、明示している）
+- リフレッシュトークンは 90 日。iPhone のホーム画面に置いた Web アプリはアプリごと（Safari とも別）にセッションが分かれるので、入り直しを減らすため長めにしている
 - ログイン画面のドメインにセッションが残るので、1 つのアプリでログインすれば、
   ほかのアプリは入力なしで入れる
 - ユーザープールは消えない設定（RETAIN と削除保護）。作り直すと sub が変わり、
@@ -73,6 +76,33 @@ aws cognito-idp admin-create-user \
 ```
 
 仮のパスワードがメールで届く。初回ログインでパスワードの変更と TOTP の登録を求められる。
+
+## パスキーで入る
+
+1Password（iPhone では「設定」→「一般」→「自動入力とパスワード」で取得元にしておく）にパスキーを保存して、
+Face ID だけで入る。サーバー側の設定は `infra/lib/identity-stack.ts` にある。
+
+| 設定 | 値 | 理由 |
+| --- | --- | --- |
+| 最初の認証 | パスワードかパスキー | パスキーが使えないときの予備にパスワード + TOTP を残す |
+| 本人確認（`WebAuthnUserVerification`） | `required` | Face ID などの本人確認ができるパスキーだけを受け付ける |
+| MFA としての扱い（`WebAuthnFactorConfiguration`） | `MULTI_FACTOR_WITH_USER_VERIFICATION` | 本人確認つきのパスキーを MFA として数える。これが無いと、MFA 必須のプールではパスキーで入れない。L2 に項目が無いので L1 で入れている |
+| RP ID | ログイン画面のドメイン（`auth.sakekasu-builder.com`） | マネージドログインで使うときの決まり。ドメインを変えると登録済みのパスキーは使えなくなる |
+
+### 登録する（ユーザーごとに一度）
+
+管理者が作ったユーザーには、Cognito は自分からはパスキーの登録を勧めない。登録の画面を直接開く。
+
+1. いつも通りにどれかのアプリでログインする（パスワード + TOTP）
+2. 同じブラウザ（iPhone なら、ホーム画面のアプリではなく Safari）で次を開く。reinvent のクライアントの例
+
+   ```
+   https://auth.sakekasu-builder.com/passkeys/add?client_id=7thbqs1omkqdgo6k922sqhefdi&redirect_uri=https%3A%2F%2Freinvent.sakekasu-builder.com%2F
+   ```
+
+3. 保存先を聞かれたら 1Password を選ぶ
+
+パスキーは 1Password で同期されるので、ほかの端末で登録し直す必要はない。
 
 ## アプリを足す・戻り先を変える
 
