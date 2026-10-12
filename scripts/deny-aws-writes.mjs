@@ -7,9 +7,8 @@
 // write でもない操作を数え漏らすため。
 //
 // これはうっかり変更操作を打つのを止めるための関門であって、サンドボックスではない。
-// コマンド文字列を読むだけなので、引用符の内側に隠した呼び出し（bash -c で渡すなど）、
-// 変数展開、base64、SDK 経由の操作までは見えない。本当の境界は verify プロファイルが
-// 参照する読み取り専用の Permission Set にあり、こちらはその手前の網。
+// 本当の境界は verify プロファイルが参照する読み取り専用の Permission Set にあり、
+// こちらはその手前の網。
 
 // 値を取る AWS CLI のグローバルオプション。サービス名の手前で読み飛ばす
 const FLAGS_WITH_VALUE = new Set([
@@ -50,35 +49,18 @@ const READ_EXACT = new Set([
 
 // 名前は読み取りの接頭辞だが、通してはいけない操作。READ_PREFIXES より先に見る。
 //
-// 一覧は CLI 同梱の botocore モデルから機械的に出した。SigV4 で署名されない
-// （モデル上 authtype: none）操作を持つサービスは7つある。署名されない呼び出しには
-// IAM の認可がかからないので、そこだけはこの関門が唯一の防ぎ手になる。
-//
-//   sso              4/4 が署名なし          → サービスごと落とす（下の isRead）
-//   sso-oidc         3/4 が署名なし          → 同上。残り1つもトークンを作る側
-//   agent-toolkit    6/6 が署名なし          → 同上
-//   cognito-identity 4/23 が署名なし         → 署名なしの分だけ下に並べる
-//   cognito-idp      32/129 が署名なし       → 同上
-//   signin           1/11（create-o-auth2-token）
-//   sts              2/11（assume-role-with-saml / -web-identity）
-//
-// signin と sts の署名なし操作、および cognito の署名なし操作の残り（delete-user や
-// change-password など利用者データを書き換える側）は、名前が READ_PREFIXES に
-// 当たらないので既に落ちている。ここに並べるのは接頭辞で通ってしまう分だけ。
+// 一覧は CLI 同梱の botocore モデルから機械的に出した（SigV4 で署名されない操作と、
+// 資格情報を返す操作）。ここに並べるのは READ_PREFIXES の接頭辞で通ってしまう分だけ。
 //
 // サービス名は CLI から見た名前で書く。モデルのディレクトリ名とは一致しないことが
 // あり、例えば agent-toolkit はディレクトリ上 agenttoolkit になっている。
 // 新しい AWS CLI に上げたときは同じ観点で見直す。
 const DENY_EXACT = new Set([
-  // Cognito Identity。ID プールのロールの一時認証情報が返る。呼び出しは
-  // 利用者側のトークンで通るため、verify セッションの Deny も ReadOnlyAccess の
-  // 枠も効かない。この関門が唯一の防ぎ手になる
+  // Cognito Identity。ID プールのロールの一時認証情報が返る
   'cognito-identity get-credentials-for-identity',
   'cognito-identity get-id',
   'cognito-identity get-open-id-token',
-  // Cognito User Pools の利用者向け操作。利用者の access token で本人のデータと
-  // トークンが読める。deny ポリシーが止めているのは Admin* の側だけで、
-  // IAM で認証されないこちらには届かない
+  // Cognito User Pools の利用者向け操作。本人のデータとトークンが読める
   'cognito-idp get-user',
   'cognito-idp get-user-attribute-verification-code',
   'cognito-idp get-user-auth-factors',
@@ -86,9 +68,7 @@ const DENY_EXACT = new Set([
   'cognito-idp get-device',
   'cognito-idp list-devices',
   'cognito-idp list-web-authn-credentials',
-  // ここから下は IAM で認証されるので Deny も枠も効くが、返るのが資格情報そのもの。
-  // 手に入れば以降の操作は環境変数や SDK 経由になり、この関門からは見えなくなる。
-  // 確認作業のどれにも要らないので落とす
+  // ここから下は返るのが資格情報そのもの。確認作業のどれにも要らないので落とす
   'sts get-session-token', 'sts get-federation-token',
   'sts get-delegated-access-token', 'sts get-web-identity-token',
   'ecr get-login-password', 'ecr get-authorization-token',
@@ -298,10 +278,8 @@ const CLI_NAME = /^[a-z0-9][a-z0-9-]*$/;
 // 語を CLI の名前として読む。そのままの形で読めなければ、非 ASCII の文字だけを
 // 落としてもう一度見る。
 //
-// 名前に混ぜ物をして形を崩すと素通りする、という指摘が繰り返し挙がった。制御文字、
-// 結合文字、私用領域、孤立サロゲート、非文字、置換文字、同形異字、修飾文字と、
-// 使われる文字は毎回違う。Unicode の分類を継ぎ足す形だと隣が残るたびに同じ穴が
-// 開き直すので、「落とすと名前になるなら、その名前として判定する」形でまとめて閉じる。
+// 文字の種類を個別に継ぎ足していく形ではなく、「落とすと名前になるなら、その名前として
+// 判定する」形でまとめて扱う。
 //
 // 落とすのを非 ASCII に限っているのは、ASCII の記号は引数として正当に使われるため。
 // すべて落とすと /usr/local/bin/aws_completer や scripts/ のような引数が名前に化け、
@@ -361,16 +339,10 @@ function isRead(service, operation) {
   // 上の READ_EXACT に載せた ls だけを通す
   if (service === 's3') return false;
   // SSO Portal API（sso）と、そのトークンを作る側（sso-oidc）は、上で通した
-  // sso login を除いて全部落とす。get-role-credentials に access token を渡すと
-  // その利用者に割り当てられた任意のロール（AdministratorAccess を含む）の
-  // 一時認証情報が返るうえ、この2サービスの呼び出しは SigV4 で署名されないため、
-  // verify セッションに重ねた Deny も ReadOnlyAccess の枠も一切効かない。
-  // サービス単位で落としておけば、将来 AWS が読み取りの名前で操作を足しても素通りしない。
+  // sso login を除いて全部落とす。確認作業では使わないうえ、資格情報を返す操作を含む。
+  // サービス単位で落としておけば、将来 AWS が読み取りの名前で操作を足しても通らない。
   //
-  // agent-toolkit も 6 操作すべてが署名されないので同じ扱いにする。返るのは AWS 側の
-  // スキルカタログで、資格情報も利用者データも含まないが、IAM が一切届かないうえ
-  // この確認作業では使わないため、通す理由がない。get-skill-file は外部の内容を
-  // そのままセッションに引き込む口でもある
+  // agent-toolkit も確認作業では使わないので同じ扱いにする
   if (service === 'sso' || service === 'sso-oidc' || service === 'agent-toolkit') return false;
   if (operation === 'wait' || operation === 'help') return true;
   return READ_PREFIXES.some((p) => operation.startsWith(p));
@@ -379,10 +351,6 @@ function isRead(service, operation) {
 // その語が AWS CLI の呼び出しかどうか。'aws' 単体と、'aws' で終わるパス
 // （/usr/local/bin/aws）の両方を見る。名前の位置と同じく混ぜ物を置けるので、
 // 非 ASCII を落とした形でも同じ2つを見る。
-//
-// ただし、実体を別名で置いて呼ぶ形（cp や ln で /tmp/x にしてから /tmp/x s3 rm …）は
-// ここでは拾えない。名前を手がかりにする方式では原理的に追えないので、先頭に書いた
-// 「サンドボックスではない」の範囲に含まれる
 function isAwsCommand(token) {
   if (token === 'aws' || token.endsWith('/aws')) return true;
   const ascii = token.replace(/[^\x00-\x7f]/g, '');
