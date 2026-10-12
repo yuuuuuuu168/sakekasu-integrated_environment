@@ -18,6 +18,9 @@ name: claude-review
 
 on:
   pull_request:
+    # 開いたとき・開き直したとき・Draft を外したときだけ見る。push のたびには見直さない。
+    # 修正後にもう一度見せたいときは、PR を Draft に戻して Ready for review にし直す。
+    types: [opened, reopened, ready_for_review]
     paths:
       - 'infra/**'
       - 'scripts/**'
@@ -36,6 +39,8 @@ permissions:
 
 jobs:
   review:
+    # Draft のうちは見ない。Ready for review にした時点で走る
+    if: ${{ !github.event.pull_request.draft }}
     name: 差分のレビュー
     runs-on: ubuntu-latest
     steps:
