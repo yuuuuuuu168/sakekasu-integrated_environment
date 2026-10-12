@@ -245,7 +245,7 @@ export class CdkdDeployStack extends cdk.Stack {
     });
 
     // 同じアカウントにいる 4 アプリのリソースに触れないためのガードレール（Deny だけ）。
-    // 中身と、何を防げて何を防げないかは lib/deploy-guardrail.ts
+    // 中身は lib/deploy-guardrail.ts
     const guardrailPolicy = new iam.ManagedPolicy(this, 'CdkdGuardrailPolicy', {
       managedPolicyName: `${PREFIX}-cdkd-deploy-guardrail`,
       description: 'Deny-only guardrail that keeps cdkd deploys of sakekasu-integrated inside the integrated app',

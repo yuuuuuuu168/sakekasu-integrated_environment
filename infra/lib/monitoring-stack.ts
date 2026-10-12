@@ -152,14 +152,8 @@ export class MonitoringStack extends cdk.Stack {
      * 「DevOps Agent への転送」）。Slack 通知とは別の購読者として同じトピックを受けるだけなので、
      * 転送が止まってもアラートは Slack に届く。
      *
-     * 作りは sakekasu-builder の lib/devops-agent-stack.ts の転送 Lambda を写した。builder だけが
-     * 自分のトピックに転送を付けていて、他の 3 アプリのアラームは調査に回っていなかった（2026-10-11）。
+     * 作りは sakekasu-builder の lib/devops-agent-stack.ts の転送 Lambda を写した。
      * 調査に回すのは ALARM への遷移と AWS Health の障害（issue）だけ。判定は lambda/devops-agent-webhook にある。
-     *
-     * 調査に使うクロスアカウントロール（sakekasu-dev-devops-agent-monitoring）は builder に残している。
-     * Agent Space がアカウント全体を読むためのロールで、AWS 管理ポリシー AIDevOpsAgentAccessPolicy と
-     * iam:CreateServiceLinkedRole を持つ。このリポジトリのロールの境界（lib/role-boundary.ts）は許可リストで
-     * iam:* を拒否しているので、そのままでは作れない
      */
     const devopsAgentSelfAlarmName = `${PREFIX}-devops-agent-webhook-failure`;
     const devopsAgentWebhook = this.lambda('DevOpsAgentWebhook', 'devops-agent-webhook', {
