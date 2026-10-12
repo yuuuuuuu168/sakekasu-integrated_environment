@@ -12,7 +12,6 @@ import * as iam from 'aws-cdk-lib/aws-iam';
  * 4 アプリ（reinvent、builder、kakeibo、learning）と共通基盤は同じアカウントに同居している。
  * cdkd が誤った差分を出したとき（2026-10-04 にはタグを足しただけでロールの作り直しが起き、
  * 古いロールのポリシーが剥がされた）に、壊れるのをこのアプリの中に留めるのが目的。
- * 悪意のある main の変更は止められない。防ぎたいのは事故のほう。
  *
  * - 他のアプリの App タグが付いたリソースには触れない（読み取りも含めて拒否する）
  * - 他のアプリの App タグを付けない（このアプリの値以外のタグを付けて作る・付け替える）
@@ -224,7 +223,7 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
     // アプリごとの接頭辞が無いので、名前でアプリを分けられない。cdkd は資産を消さない
     // （有無を確かめて無ければ置くだけ）ので、削除と、削除と同じ結果になるバケットの設定変更
     // （ライフサイクルでの期限切れ、暗号化キーの差し替え、レプリケーションなど）を、状態バケットと同じだけ止める。
-    // 上書きは止められない。新しいリージョンの cdkd bootstrap はここに当たるので、人が打つ
+    // 新しいリージョンの cdkd bootstrap はここに当たるので、人が打つ
     new iam.PolicyStatement({
       sid: 'DenyDestroyingSharedAssets',
       effect: iam.Effect.DENY,
@@ -239,9 +238,8 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
 /**
  * アプリのロールを Permissions Boundary の内側に閉じ込める。
  *
- * cdkd 用ロールは接頭辞の範囲のロールを作り替えられるので、Lambda の実行ロールに
- * 管理者相当を書き込み、関数のコードを差し替えて呼べば、ガードレールの外の操作にも届く。
  * 境界が付いていれば、ロールの実効権限は「ロール自身のポリシー ∩ 境界」で頭打ちになる。
+ * cdkd 用ロールが作り替えるロールを通して、権限がガードレールの外に広がらないようにする。
  *
  * iam:PermissionsBoundary はロールの現在の境界（CreateRole では付けようとしている境界）を指す。
  * 否定の条件はキーが無いときも当たるので、境界の無いロールへの書き込みも拒否される。
@@ -266,9 +264,8 @@ function roleBoundaryGuardStatements(
       resources: appRoles,
       conditions: { ArnNotEquals: { 'iam:PermissionsBoundary': roleBoundaryArn } },
     }),
-    // 信頼ポリシーを書き換えると、外のアカウントにロールを引き受けさせられる。境界は
-    // 引き受けた側の権限を絞るだけなので、これは境界では防げない。cdkd が呼ぶのは
-    // CDK 側で assumedBy を変えたときだけで、そのときは AccessDenied で止まるので人が直す
+    // 信頼ポリシーは境界とは別に守る。cdkd が書き換えるのは CDK 側で assumedBy を変えたときだけで、
+    // そのときは AccessDenied で止まるので人が直す
     new iam.PolicyStatement({
       sid: 'DenyRemovingBoundaryAndTrust',
       effect: iam.Effect.DENY,
