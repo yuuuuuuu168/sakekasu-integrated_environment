@@ -51,7 +51,7 @@ URL は数えないので、英語のコマンドや英文の下書きはコー�
 アプリのロールの Permissions Boundary、cdkd の落とし穴をそこにまとめてある。
 とくに次の 3 つは、破るとデプロイが止まるか、他のアプリやデータを壊す。
 
-- 手元から `cdkd deploy` / `cdk deploy` を打たない（例外は GitHub Actions のロールのスタック）
+- 手元から `cdkd deploy` / `cdk deploy` を打たない（例外は GitHub Actions のロールのスタックと、builder の管理アカウントの billing-notifier）
 - IAM ロールのプロパティを変えるときは、実物のロール名が cdkd の導く名前と一致するかを先に確かめる
 - 他のアプリのリソースを、アプリのロールから使わない
 

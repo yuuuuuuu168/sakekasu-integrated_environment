@@ -89,6 +89,9 @@ sakekasu の 5 リポジトリ（reinvent、builder、kakeibo、learning、integ
   | kakeibo | `sakekasu-kakeibo-github-oidc` | `github-oidc` |
   | learning | `sakekasu-learning-github-oidc` | `github-oidc` |
 
+  builder の `sakekasu-billing-notifier` も例外で、管理アカウントに人が手で入れる。手順は builder の
+  `docs/operations.md` にある
+
   kakeibo の `sakekasu-kakeibo-cdkd-deploy` と integrated の cdkd-deploy スタックは、deploy ワークフローが
   cdkd より先に毎回入れる。手で打たなくてよい
 
