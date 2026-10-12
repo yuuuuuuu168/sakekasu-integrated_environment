@@ -11,9 +11,7 @@
 | 共通基盤（このリポジトリ） | 通知の経路（トピックと Slack 通知 Lambda）、DevOps Agent への転送、AWS Health、全サイトの死活監視 |
 | 各アプリ | 自分のアラーム（Lambda のエラー、API の 5xx など）。送り先を共通のトピックにする |
 
-AWS Health はアカウント全体の話なので、共通基盤だけが持つ。builder にも Health のルール
-（`dev-sakekasu-aws-health` と us-east-1 の `dev-sakekasu-aws-health-global`）があるが、
-両方が動くと同じ通知が 2 通届く。こちらが動いたのを確かめてから builder 側を外す。
+AWS Health はアカウント全体の話なので、共通基盤だけが持つ。
 
 ## 構成
 
@@ -213,10 +211,7 @@ aws cloudwatch describe-alarm-history --alarm-name <アラーム名> \
 Agent Space（運用ツール用アカウントの `sakekasu`）、Slack と GitHub の連携、調査用のクロスアカウントロールは
 sakekasu-builder の [docs/devops-agent.md](https://github.com/yuuuuuuu168/sakekasu-builder/blob/main/docs/devops-agent.md) にある。
 
-転送 Lambda は builder の `infra/lambda/devops-agent-webhook` を写したもの。2026-10-11 まで転送は builder だけが
-自分のトピック（`dev-sakekasu-alerts`）に付けていて、kakeibo、learning、reinvent と共通基盤のアラーム（57 本）は
-Slack に届くだけで調査に回っていなかった。ここに移して、このトピックに送る全アラームを対象にした。
-builder のアラームもこのトピックへ移す（builder 側の PR）。
+転送 Lambda は builder の `infra/lambda/devops-agent-webhook` を写したもの。このトピックに送る全アラームを対象にしている。
 
 ### 調査に回すもの
 
@@ -288,14 +283,6 @@ aws lambda invoke --region ap-northeast-1 \
 ```sh
 aws devops-agent list-backlog-tasks --agent-space-id <Agent Space ID> --profile verify-ops --region ap-northeast-1
 ```
-
-### 調査用のロールは builder に残している
-
-Agent Space がアプリのアカウントを読むためのクロスアカウントロール（`sakekasu-dev-devops-agent-monitoring`）も
-本来はアカウント全体のもので、共通基盤が持つのが筋。ただしこのロールは AWS 管理ポリシー
-`AIDevOpsAgentAccessPolicy`（読み取りの広い権限）と `iam:CreateServiceLinkedRole` を持つ。このリポジトリのロールの境界は
-許可リストで `iam:*` を拒否しているので、移すには境界の例外か別の境界が要り、Agent Space の登録もコンソールで差し替えになる。
-転送ほど急ぐものでもないので、今回は移していない。
 
 ## 外形監視の対象を足す
 
