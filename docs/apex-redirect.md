@@ -1,9 +1,8 @@
 # apex（sakekasu-builder.com）と www：入口のページと転送
 
 builder を `sake.sakekasu-builder.com` へ移した（sakekasu-builder の docs/sake-subdomain.md）。
-apex と www は、これまで builder を配っていた Amplify Hosting に付いたままになっている。
-ここを転送専用の CloudFront（`sakekasu-integrated-apex-redirect`、us-east-1）に付け替え、
-Amplify アプリを消す。
+apex と www は、それまで builder を配っていた Amplify Hosting から、転送専用の CloudFront
+（`sakekasu-integrated-apex-redirect`、us-east-1）に付け替えた。
 
 ## 作り
 
@@ -50,8 +49,7 @@ Amplify アプリを消す。
   builder を apex で使っていた頃のブックマークを生かすため
 - オリジンには届かない。CloudFront がオリジンを 1 つ求めるので、転送先を置いてある
 - HSTS（`max-age=31536000; includeSubDomains`）を付ける。Amplify が apex に出していたもの
-- 置き場所が builder ではなくこのリポジトリなのは、apex が 4 アプリ共通のドメインになるため。
-  入口のページに変えるときもここで済む
+- 置き場所が builder ではなくこのリポジトリなのは、apex が 4 アプリ共通のドメインだから
 - apex の A レコードは消さない。共通ログインの独自ドメインが、親のドメインに A レコードが
   あることを求める（[identity.md](identity.md)）。この CloudFront に向けておけば満たし続ける
 
@@ -89,7 +87,7 @@ curl -sI https://<DistributionDomainName>/records | grep -iE '^(HTTP|location)'
 戻すときのために、apex と www のいまの中身を取っておく。
 
 ```sh
-aws route53 list-resource-record-sets --profile yuuuuuuuki7749 \
+aws route53 list-resource-record-sets --profile <管理アカウントのプロファイル> \
   --hosted-zone-id Z0378029DKDVAJ2VE475 \
   --query "ResourceRecordSets[?Name=='sakekasu-builder.com.' || Name=='www.sakekasu-builder.com.']"
 ```

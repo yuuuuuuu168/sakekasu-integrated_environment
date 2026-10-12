@@ -3,11 +3,11 @@
 個人で作っている 4 つの Web アプリ（sakekasu-reinvent、sakekasu-builder、sakekasu-kakeibo、
 sakekasu-learning）が共通で使う基盤。アプリごとに別々だったものを、ここに 1 つだけ置く。
 
-| 基盤 | 状態 | 説明 |
-| --- | --- | --- |
-| 共通ログイン（identity） | 作成中 | 4 アプリで共有する Cognito のユーザープールとログイン画面。[docs/identity.md](docs/identity.md) |
-| 共通の監視と Slack 通知 | 作成中 | アラートの Slack 通知と DevOps Agent への自動調査の依頼、AWS Health、サイトの死活監視。各アプリのアラームの送り方も。[docs/monitoring.md](docs/monitoring.md) |
-| apex の入口と転送 | 稼働中 | `sakekasu-builder.com` と www。トップは 4 アプリへの入口のページ、ほかのパスは builder の画面（`sake.`）へ 301 で転送する CloudFront。[docs/apex-redirect.md](docs/apex-redirect.md) |
+| 基盤 | 説明 |
+| --- | --- |
+| 共通ログイン（identity） | 4 アプリで共有する Cognito のユーザープールとログイン画面。[docs/identity.md](docs/identity.md) |
+| 共通の監視と Slack 通知 | アラートの Slack 通知と DevOps Agent への自動調査の依頼、AWS Health、サイトの死活監視。各アプリのアラームの送り方も。[docs/monitoring.md](docs/monitoring.md) |
+| apex の入口と転送 | `sakekasu-builder.com` と www。トップは 4 アプリへの入口のページ、ほかのパスは builder の画面（`sake.`）へ 301 で転送する CloudFront。[docs/apex-redirect.md](docs/apex-redirect.md) |
 
 共通テーマ（`theme/`）は sakekasu-template から同期で配られる。このリポジトリで書き換えない。
 
@@ -42,20 +42,7 @@ npm test
 CDK_DEFAULT_ACCOUNT=000000000000 npx cdk synth -q
 ```
 
-### npm audit で残している警告
-
-`infra/` の `npm audit` には、直せない high が 8 件残る（2026-10 時点）。
-
-- `@go-to-k/cdkd` 配下の `braces` / `micromatch` / `fast-glob` / `cdk-local` /
-  `@aws-cdk/toolkit-lib` / `@aws-cdk/cdk-assets-lib`。`braces` に修正版が無い
-- `aws-cdk-lib` に同梱された `brace-expansion`。同梱なので overrides が効かない
-
-どれもグロブを展開するときの DoS で、合成とデプロイのときにだけ動く。展開するのは
-リポジトリに書いた自分たちのグロブで、外から入力が渡る経路は無いので実害は無い。
-cdkd のバージョンを下げたり、cdkd 配下を overrides で差し替えたりはしない。
-上流が直したら、cdkd と aws-cdk-lib を上げて消す。
-
-なお、`vitest` 4 系への更新を npm 10 で入れようとすると、ピア依存の解決で
+`vitest` 4 系への更新を npm 10 で入れようとすると、ピア依存の解決で
 `Cannot read properties of null (reading 'edgesOut')` が出て止まる。
 lock を作り直すときは `npx npm@11 install` を使う（`npm ci` は npm 10 のままで通る）。
 
