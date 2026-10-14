@@ -8,7 +8,7 @@ import { GithubOidcStack } from '../lib/github-oidc-stack';
 import { HealthGlobalStack } from '../lib/health-global-stack';
 import { parseHealthChecks } from '../lib/health-checks';
 import { IdentityStack, type CustomAuthDomain } from '../lib/identity-stack';
-import { MonitoringStack } from '../lib/monitoring-stack';
+import { MonitoringStack, parseDevopsAgentForwarding } from '../lib/monitoring-stack';
 import {
   APEX_DOMAINS,
   APEX_REDIRECT_REGION,
@@ -120,6 +120,8 @@ function buildPlatformStacks(): void {
    */
   new MonitoringStack(app, MONITORING_STACK_NAME, {
     healthChecks: parseHealthChecks(app.node.tryGetContext('healthChecks')),
+    // アラームを DevOps Agent の調査に回すか。費用を抑えるため 2026-10 から止めている（docs/monitoring.md）
+    devopsAgentForwarding: parseDevopsAgentForwarding(app.node.tryGetContext('devopsAgentForwarding')),
     env: { account, region: REGION },
   });
   new HealthGlobalStack(app, HEALTH_GLOBAL_STACK_NAME, {

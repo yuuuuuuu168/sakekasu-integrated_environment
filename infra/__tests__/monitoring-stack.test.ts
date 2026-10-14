@@ -5,25 +5,38 @@ import { readFileSync } from 'node:fs';
 import { CdkdDeployStack } from '../lib/cdkd-deploy-stack';
 import { HealthGlobalStack } from '../lib/health-global-stack';
 import { parseHealthChecks } from '../lib/health-checks';
-import { METRIC_NAMESPACE, MonitoringStack } from '../lib/monitoring-stack';
+import { METRIC_NAMESPACE, MonitoringStack, parseDevopsAgentForwarding } from '../lib/monitoring-stack';
 
 const ACCOUNT = '123456789012';
 const env = { account: ACCOUNT, region: 'ap-northeast-1' };
 const TOPIC_ARN_REF = { Ref: 'AlertTopic2720D535' };
 
 /** cdk.json に書いてある対象をそのまま使う（実際に合成されるものを確かめる） */
-const healthChecks = parseHealthChecks(
-  JSON.parse(readFileSync(new URL('../cdk.json', import.meta.url), 'utf8')).context.healthChecks,
-);
+const cdkContext = JSON.parse(readFileSync(new URL('../cdk.json', import.meta.url), 'utf8')).context;
+const healthChecks = parseHealthChecks(cdkContext.healthChecks);
 
 type Resource = { Properties: Record<string, any> };
 
+/** 転送を有効にしたときの合成。下のテストの大半はこちらで確かめる */
 let template: Template;
+/** 転送を止めたときの合成 */
+let pausedTemplate: Template;
 let globalTemplate: Template;
 
 beforeAll(() => {
   const app = new cdk.App();
-  const monitoring = new MonitoringStack(app, 'sakekasu-integrated-monitoring', { healthChecks, env });
+  const monitoring = new MonitoringStack(app, 'sakekasu-integrated-monitoring', {
+    healthChecks,
+    devopsAgentForwarding: true,
+    env,
+  });
+  // 同じ App で合成したあとに構成を足せないので、止めたときの合成は別の App で作る
+  const paused = new MonitoringStack(new cdk.App(), 'sakekasu-integrated-monitoring', {
+    healthChecks,
+    devopsAgentForwarding: false,
+    env,
+  });
+  pausedTemplate = Template.fromStack(paused);
   const global = new HealthGlobalStack(app, 'sakekasu-integrated-health-global', {
     targetRegion: 'ap-northeast-1',
     env: { account: ACCOUNT, region: 'us-east-1' },
@@ -163,6 +176,57 @@ describe('DevOps Agent への転送', () => {
   it('転送の失敗を監視し、その名前を転送 Lambda に渡して捨てさせる', () => {
     const a = alarm('sakekasu-integrated-devops-agent-webhook-failure');
     expect(a.Properties).toMatchObject({ MetricName: 'Errors', Namespace: 'AWS/Lambda', Threshold: 1 });
+  });
+});
+
+describe('DevOps Agent への転送を止めたとき', () => {
+  const pausedAlarmNames = () =>
+    Object.values(pausedTemplate.findResources('AWS::CloudWatch::Alarm')).map(
+      (a) => (a as Resource).Properties.AlarmName,
+    );
+
+  it('転送 Lambda はトピックを購読しない（調査が起動しない）', () => {
+    const subs = Object.values(pausedTemplate.findResources('AWS::SNS::Subscription')) as Resource[];
+    expect(subs).toHaveLength(1);
+    expect(JSON.stringify(subs[0].Properties.Endpoint)).toMatch(/SlackNotifierFunction/);
+  });
+
+  it('Slack 通知の購読と失敗アラームは残る', () => {
+    pausedTemplate.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'lambda',
+      TopicArn: TOPIC_ARN_REF,
+      Endpoint: { 'Fn::GetAtt': [Match.stringLikeRegexp('^SlackNotifierFunction'), 'Arn'] },
+    });
+    expect(pausedAlarmNames()).toContain('sakekasu-integrated-slack-notifier-failure');
+  });
+
+  it('転送の失敗アラームは作らない', () => {
+    expect(pausedAlarmNames()).not.toContain('sakekasu-integrated-devops-agent-webhook-failure');
+  });
+
+  // ロールを消さないので、再開は context を true に戻すだけで済む（docs/aws-infra-rules.md は
+  // diff にロールの削除が出たら止まる決まり）
+  it('Lambda・ロール・ロググループは残す', () => {
+    pausedTemplate.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'sakekasu-integrated-devops-agent-webhook',
+    });
+    pausedTemplate.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'sakekasu-integrated-app-devops-agent-webhook',
+    });
+    pausedTemplate.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/aws/lambda/sakekasu-integrated-devops-agent-webhook',
+    });
+  });
+
+  it('cdk.json の devopsAgentForwarding は真偽値で書いてある', () => {
+    expect(typeof parseDevopsAgentForwarding(cdkContext.devopsAgentForwarding)).toBe('boolean');
+  });
+
+  it('真偽値以外（書き忘れ、文字列の "false"）は合成の時点で止める', () => {
+    expect(() => parseDevopsAgentForwarding(undefined)).toThrow(/devopsAgentForwarding/);
+    expect(() => parseDevopsAgentForwarding('false')).toThrow(/devopsAgentForwarding/);
+    expect(parseDevopsAgentForwarding(false)).toBe(false);
+    expect(parseDevopsAgentForwarding(true)).toBe(true);
   });
 });
 
