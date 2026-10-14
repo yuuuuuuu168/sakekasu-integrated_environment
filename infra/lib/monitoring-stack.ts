@@ -33,6 +33,26 @@ export const HEALTH_EVENT_CATEGORIES = ['issue', 'scheduledChange'];
 export interface MonitoringStackProps extends cdk.StackProps {
   /** 外形監視の対象（cdk.json の context `healthChecks`。parseHealthChecks を通したもの） */
   healthChecks: HealthCheckTarget[];
+  /**
+   * アラームを DevOps Agent の調査に回すか（cdk.json の context `devopsAgentForwarding`。
+   * parseDevopsAgentForwarding を通したもの）。false の間は転送 Lambda をトピックから外す
+   */
+  devopsAgentForwarding: boolean;
+}
+
+/**
+ * context `devopsAgentForwarding` を読む。
+ *
+ * 書き忘れや `"false"` のような文字列を黙って true / false に倒すと、止めたつもりの調査が
+ * 動き続ける（秒課金）か、その逆になる。真偽値以外は合成の時点で止める
+ */
+export function parseDevopsAgentForwarding(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(
+      `context devopsAgentForwarding は true か false で書く（cdk.json）。いまの値: ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -43,7 +63,7 @@ export interface MonitoringStackProps extends cdk.StackProps {
  * 自分のリポジトリで持ち、ここのトピックへ送る。
  *
  *   - 通知の経路: SNS トピック `sakekasu-integrated-alerts` → Slack 通知 Lambda → Slack
- *   - 自動調査: 同じトピック → 転送 Lambda → AWS DevOps Agent の Webhook
+ *   - 自動調査: 同じトピック → 転送 Lambda → AWS DevOps Agent の Webhook（context `devopsAgentForwarding` で止められる）
  *   - AWS Health: 障害と予定された変更（us-east-1 のグローバル分は HealthGlobalStack が転送してくる）
  *   - 全サイトの死活監視: 5 分ごとの外形監視と、その監視の監視
  *
@@ -154,6 +174,11 @@ export class MonitoringStack extends cdk.Stack {
      *
      * 作りは sakekasu-builder の lib/devops-agent-stack.ts の転送 Lambda を写した。
      * 調査に回すのは ALARM への遷移と AWS Health の障害（issue）だけ。判定は lambda/devops-agent-webhook にある。
+     *
+     * 止めるときは購読と失敗アラームだけを外し、Lambda・ロール・ロググループは残す（docs/monitoring.md の
+     * 「転送を止める・再開する」）。エージェントは調査した秒数だけ課金されるので、呼ばれなければ費用は出ない。
+     * Lambda も呼ばれなければ費用は出ず、ロールを消さないので再開は context を true に戻すだけで済む。
+     * 失敗アラームまで外すのは、購読の無い Lambda のエラーを見張っても意味が無いため
      */
     const devopsAgentSelfAlarmName = `${PREFIX}-devops-agent-webhook-failure`;
     const devopsAgentWebhook = this.lambda('DevOpsAgentWebhook', 'devops-agent-webhook', {
@@ -180,18 +205,20 @@ export class MonitoringStack extends cdk.Stack {
       }),
     );
 
-    this.alertTopic.addSubscription(new subscriptions.LambdaSubscription(devopsAgentWebhook));
+    if (props.devopsAgentForwarding) {
+      this.alertTopic.addSubscription(new subscriptions.LambdaSubscription(devopsAgentWebhook));
 
-    // 転送が止まると、調査が始まらないまま静かに機能を失う。ここも監視する
-    this.addAlarm('DevOpsAgentWebhookFailure', {
-      alarmName: devopsAgentSelfAlarmName,
-      description:
-        'DevOps Agent への調査依頼の転送に失敗しています。アラートは Slack に届きますが、自動調査は始まりません。' +
-        'SSM の Webhook の設定が登録されているか、Agent Space の Webhook が無効になっていないかを確認してください',
-      metric: devopsAgentWebhook.metricErrors({ period: cdk.Duration.minutes(5), statistic: 'Sum' }),
-      threshold: 1,
-      evaluationPeriods: 1,
-    });
+      // 転送が止まると、調査が始まらないまま静かに機能を失う。ここも監視する
+      this.addAlarm('DevOpsAgentWebhookFailure', {
+        alarmName: devopsAgentSelfAlarmName,
+        description:
+          'DevOps Agent への調査依頼の転送に失敗しています。アラートは Slack に届きますが、自動調査は始まりません。' +
+          'SSM の Webhook の設定が登録されているか、Agent Space の Webhook が無効になっていないかを確認してください',
+        metric: devopsAgentWebhook.metricErrors({ period: cdk.Duration.minutes(5), statistic: 'Sum' }),
+        threshold: 1,
+        evaluationPeriods: 1,
+      });
+    }
 
     // --- AWS Health ---
 

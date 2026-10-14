@@ -42,7 +42,7 @@ AWS Health はアカウント全体の話なので、共通基盤だけが持つ
 | --- | --- |
 | `sakekasu-integrated-health-check-<名前>` | 外形監視で期待した応答が 5 分 × 2 回続けて返らない |
 | `sakekasu-integrated-slack-notifier-failure` | Slack への送信に失敗した（Webhook の未登録・失効など） |
-| `sakekasu-integrated-devops-agent-webhook-failure` | DevOps Agent への調査依頼の転送に失敗した（SSM の設定の未登録、Webhook の失効など）。転送 Lambda はこのアラーム自身は転送しない |
+| `sakekasu-integrated-devops-agent-webhook-failure` | DevOps Agent への調査依頼の転送に失敗した（SSM の設定の未登録、Webhook の失効など）。転送 Lambda はこのアラーム自身は転送しない。転送を止めている間は作らない |
 | `sakekasu-integrated-watcher-failure-health-check` | 外形監視の Lambda がエラーで落ちた（1 時間に 1 回以上） |
 | `sakekasu-integrated-watcher-silent-health-check` | 外形監視が 1 時間 1 回も動いていない（スケジュールの停止など） |
 
@@ -213,6 +213,9 @@ sakekasu-builder の [docs/devops-agent.md](https://github.com/yuuuuuuu168/sakek
 
 転送 Lambda は builder の `infra/lambda/devops-agent-webhook` を写したもの。このトピックに送る全アラームを対象にしている。
 
+**2026-10-14 から止めている。** `infra/cdk.json` の context `devopsAgentForwarding` が `false` の間は、
+転送 Lambda をトピックから外してあり、アラームは Slack に届くだけで調査は始まらない（下の「転送を止める・再開する」）。
+
 ### 調査に回すもの
 
 エージェントは秒課金（$0.0083/秒、約 $30/時）なので、鳴ったもの全部は投げない。
@@ -283,6 +286,26 @@ aws lambda invoke --region ap-northeast-1 \
 ```sh
 aws devops-agent list-backlog-tasks --agent-space-id <Agent Space ID> --profile verify-ops --region ap-northeast-1
 ```
+
+### 転送を止める・再開する
+
+context `devopsAgentForwarding`（`infra/cdk.json`）で切り替える。真偽値以外を書くと合成の時点で止まる。
+
+| 値 | トピックの購読 | 失敗アラーム（`sakekasu-integrated-devops-agent-webhook-failure`） | Lambda・ロール・ロググループ |
+| --- | --- | --- | --- |
+| `true` | 転送 Lambda も購読する | 作る | ある |
+| `false` | Slack 通知 Lambda だけ | 作らない | 残す |
+
+止めても Lambda・ロール・ロググループは消さない。呼ばれなければ費用は出ず、ロールの削除と作り直しを
+挟まずに済むので、再開は `true` に戻して main へマージするだけでよい。SSM の Webhook の設定もそのまま使える。
+
+止めた理由は費用。2026-10-01〜14 の DevOps Agent の利用額は $15.47（全額クレジットで相殺）で、内訳は
+調査 $10.56（21 分。うち 17 分は reinvent の `ReinventPlanner-dynamodb-throttled`）、
+チャットなどのオンデマンド $4.86（10 分）、評価 $0.05 だった（Cost Explorer の使用タイプ別）。
+
+転送を止めても、エージェントが動くきっかけは残る。週 1 回の評価（Evaluation）と、Slack の双方向チャンネルでの
+メンション（チャット）はこのリポジトリの外なので、運用ツール用アカウントのコンソールで止める
+（builder の docs/devops-agent.md の「費用」と「Slack の双方向通信」）。
 
 ## 外形監視の対象を足す
 
@@ -357,11 +380,11 @@ ap-northeast-1 の料金（2026-10 時点）で月 5 ドル前後。
 
 | もの | 数 | 月額 |
 | --- | --- | --- |
-| CloudWatch アラーム（標準） | 10（外形監視 6、Slack 通知 1、DevOps Agent への転送 1、監視の監視 2） | 約 1.0 ドル |
+| CloudWatch アラーム（標準） | 10（外形監視 6、Slack 通知 1、DevOps Agent への転送 1、監視の監視 2）。転送を止めている間は 9 | 約 1.0 ドル |
 | カスタムメトリクス | 12（外形監視の対象ごとに失敗と応答時間） | 約 3.6 ドル（アカウントの無料枠 10 個が残っていれば減る） |
 | PutMetricData | 月 8,640 回 | 約 0.1 ドル |
 | Lambda | 外形監視 月 8,640 回（数秒ずつ）、Slack 通知と DevOps Agent への転送は届いた分だけ | 無料枠に収まる |
-| DevOps Agent | 調査した時間だけ $0.0083/秒（約 $30/時）。運用ツール用アカウントに課金される | 鳴らなければ 0。月 10 回・1 回 8 分なら約 40 ドル |
+| DevOps Agent | 調査した時間だけ $0.0083/秒（約 $30/時）。運用ツール用アカウントに課金される | 鳴らなければ 0。月 10 回・1 回 8 分なら約 40 ドル。転送を止めている間は 0 |
 | SNS、EventBridge、AWS Health | Lambda への配信、ルール、Health のイベント | 0 |
 | CloudWatch Logs | 30 日で消える。量は小さい | ほぼ 0 |
 

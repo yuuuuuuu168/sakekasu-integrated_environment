@@ -11,6 +11,7 @@
     "authCertificateId": "67bb48e9-8b29-4a94-8753-af9877847205",
     "apexCertificateId": "b40b5b6b-5b1f-47aa-8f43-d7604696a25a",
     "portalClientId": "44f96q5enee70cn565bapma9op",
+    "devopsAgentForwarding": false,
     "apps": [
       {
         "name": "reinvent",
