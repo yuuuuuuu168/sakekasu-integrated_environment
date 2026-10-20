@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { parseSnsMessage } from '../../shared/sns';
+import { buildSlackPayload } from '../blocks';
 
 /**
  * Slack へ渡すブロックの組み立てを検証する。
- * ハンドラは環境変数を要求するため、読み込み前に用意しておく。
+ * 組み立ては純粋な関数（blocks.ts）なので直接呼ぶ。ハンドラを通す必要がある検査
+ * （送信やログ）だけ runHandler を使う。ハンドラは環境変数を要求するため、読み込み前に用意しておく。
  */
 process.env.WEBHOOK_PARAMETER_NAME = '/test/webhook';
 
@@ -18,47 +21,40 @@ vi.mock('@aws-sdk/client-ssm', () => ({
 
 type Block = { type: string; text?: { text?: string }; fields?: { text: string }[] };
 
-let buildBlocksForMessage: (message: string, subject?: string | null) => Promise<Block[]>;
-/** Slack へ送る本文まるごと（プレビュー文 text を含む） */
-let buildPayloadForMessage: (message: string, subject?: string | null) => Promise<string>;
+const TIMESTAMP = '2026-08-06T00:00:00Z';
 
-beforeAll(async () => {
-  // ハンドラは Slack へ送ってしまうため、送信部分だけ差し替えて中身を取り出す
+/** Slack へ送る本文まるごと（プレビュー文 text を含む）を JSON の文字列で返す */
+function buildPayloadForMessage(message: string, subject: string | null = null): string {
+  const sns = { Subject: subject, Message: message, Timestamp: TIMESTAMP };
+  return JSON.stringify(buildSlackPayload(parseSnsMessage(message), sns, 'ap-northeast-1'));
+}
+
+function buildBlocksForMessage(message: string, subject: string | null = null): Block[] {
+  return JSON.parse(buildPayloadForMessage(message, subject)).blocks as Block[];
+}
+
+/**
+ * ハンドラに 1 件流し、Slack へ送られた本文（JSON の文字列）を返す。
+ * fetch は差し替え、ok で Slack の応答の成否を決める
+ */
+async function runHandler(
+  message: string,
+  { subject = null, ok = true }: { subject?: string | null; ok?: boolean } = {},
+): Promise<string> {
   const mod = await import('../index');
-  buildBlocksForMessage = async (message, subject = null) => {
-    const captured: Block[] = [];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (_url: string, init: { body: string }) => {
-      captured.push(...(JSON.parse(init.body).blocks as Block[]));
-      return { ok: true, status: 200 } as Response;
-    }) as typeof fetch;
-    try {
-      await mod.handler({
-        Records: [{ Sns: { Subject: subject, Message: message, Timestamp: '2026-08-06T00:00:00Z' } }],
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-    return captured;
-  };
-
-  buildPayloadForMessage = async (message, subject = null) => {
-    let payload = '';
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (_url: string, init: { body: string }) => {
-      payload = init.body;
-      return { ok: true, status: 200 } as Response;
-    }) as typeof fetch;
-    try {
-      await mod.handler({
-        Records: [{ Sns: { Subject: subject, Message: message, Timestamp: '2026-08-06T00:00:00Z' } }],
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-    return payload;
-  };
-});
+  let payload = '';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (_url: string, init: { body: string }) => {
+    payload = init.body;
+    return { ok, status: ok ? 200 : 500 } as Response;
+  }) as typeof fetch;
+  try {
+    await mod.handler({ Records: [{ Sns: { Subject: subject, Message: message, Timestamp: TIMESTAMP } }] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return payload;
+}
 
 /** ブロック全体を1つの文字列にして中身を調べる */
 function flatten(blocks: Block[]): string {
@@ -73,7 +69,7 @@ describe('Slack へ渡す文字列の無害化', () => {
   // mrkdwn は <URL|文字> をリンクとして解釈するため、そのまま流すと
   // 偽のリンクを通知に差し込まれる
   it('本文のリンク記法を無効にする', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'IAM',
         eventTypeCategory: 'issue',
@@ -86,7 +82,7 @@ describe('Slack へ渡す文字列の無害化', () => {
   });
 
   it('一斉メンションを無効にする', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'EC2',
         eventTypeCategory: 'issue',
@@ -97,7 +93,7 @@ describe('Slack へ渡す文字列の無害化', () => {
   });
 
   it('影響リソースの値も無害化する', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'S3',
         eventTypeCategory: 'issue',
@@ -108,7 +104,7 @@ describe('Slack へ渡す文字列の無害化', () => {
   });
 
   it('アラーム以外の任意メッセージも無害化する', async () => {
-    const blocks = await buildBlocksForMessage('<!here> <https://evil.example|クリック>');
+    const blocks = buildBlocksForMessage('<!here> <https://evil.example|クリック>');
     const text = flatten(blocks);
     expect(text).not.toContain('<!here>');
     expect(text).not.toContain('<https://evil.example|');
@@ -116,7 +112,7 @@ describe('Slack へ渡す文字列の無害化', () => {
 
   // CloudWatch アラームの説明文にも同じ処理を通す
   it('アラームの説明も無害化する', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       JSON.stringify({
         AlarmName: 'test-alarm',
         NewStateValue: 'ALARM',
@@ -132,7 +128,7 @@ describe('Slack の文字数上限', () => {
   const SECTION_LIMIT = 3000;
 
   it('長い本文でも section の上限を超えない', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'RDS',
         eventTypeCategory: 'issue',
@@ -149,7 +145,7 @@ describe('Slack の文字数上限', () => {
   // ARN は1件で最大2048文字あり、数件並ぶだけで上限を超える
   it('長い ARN が並んでも上限を超えず、省略件数を添える', async () => {
     const longArn = (n: number) => `arn:aws:rds:ap-northeast-1:111122223333:db:${'x'.repeat(900)}${n}`;
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'RDS',
         eventTypeCategory: 'issue',
@@ -176,14 +172,14 @@ describe('通知プレビュー文（text フィールド）', () => {
     ['Health の種類', JSON.stringify({ source: 'aws.health', detail: { service: 'S3', eventTypeCategory: evil } })],
     ['JSON でない本文', 'これは JSON ではない'],
   ])('%s から記法が漏れない', async (_label, message) => {
-    const payload = await buildPayloadForMessage(message, evil);
+    const payload = buildPayloadForMessage(message, evil);
     const text = JSON.parse(payload).text as string;
     expect(text).not.toContain('<!channel>');
     expect(text).not.toContain('<https://evil.example|');
   });
 
   it('件名（Subject）からも漏れない', async () => {
-    const payload = await buildPayloadForMessage('ただの本文', evil);
+    const payload = buildPayloadForMessage('ただの本文', evil);
     const text = JSON.parse(payload).text as string;
     expect(text).not.toContain('<!channel>');
     expect(text).not.toContain('<https://evil.example|');
@@ -194,41 +190,22 @@ describe('通知プレビュー文（text フィールド）', () => {
 // 「うっかり漏らしても守られる」ことをここで担保する
 describe('送信直前の砦', () => {
   it('プレビュー文は必ず無害化されてから送られる', async () => {
-    const mod = await import('../index');
-    let payload = '';
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (_url: string, init: { body: string }) => {
-      payload = init.body;
-      return { ok: true, status: 200 } as Response;
-    }) as typeof fetch;
-    try {
-      // 組み立て側を経由せず、生の文字列を直接渡す経路を模す
-      await mod.handler({
-        Records: [
-          {
-            Sns: {
-              Subject: null,
-              Message: JSON.stringify({
-                AlarmName: 'x',
-                NewStateValue: 'ALARM',
-                // ここは組み立て時に safeText を通していない値として扱われる
-                OldStateValue: '<!here>',
-              }),
-              Timestamp: '2026-08-06T00:00:00Z',
-            },
-          },
-        ],
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    // 組み立て側を経由せず、生の文字列を直接渡す経路を模す
+    const payload = await runHandler(
+      JSON.stringify({
+        AlarmName: 'x',
+        NewStateValue: 'ALARM',
+        // ここは組み立て時に safeText を通していない値として扱われる
+        OldStateValue: '<!here>',
+      }),
+    );
     const sent = JSON.parse(payload);
     // text（プレビュー）にも blocks にも記法が残らない
     expect(JSON.stringify(sent)).not.toContain('<!here>');
   });
 
   it('プレビュー文の長さも抑える', async () => {
-    const payload = await buildPayloadForMessage(
+    const payload = buildPayloadForMessage(
       JSON.stringify({ AlarmName: 'あ'.repeat(5000), NewStateValue: 'ALARM' }),
     );
     const text = JSON.parse(payload).text as string;
@@ -240,7 +217,7 @@ describe('送信直前の砦', () => {
 // 見出し（plain_text）は記法を解釈しないので、そもそも通してはいけない
 describe('無害化のかけすぎで表示を壊さない', () => {
   it('プレビュー文に実体参照が二重に出ない', async () => {
-    const payload = await buildPayloadForMessage(
+    const payload = buildPayloadForMessage(
       JSON.stringify({ AlarmName: 'cpu>90%', NewStateValue: 'ALARM' }),
     );
     const text = JSON.parse(payload).text as string;
@@ -249,7 +226,7 @@ describe('無害化のかけすぎで表示を壊さない', () => {
   });
 
   it('見出しにはエスケープせず、そのままの文字を出す', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       JSON.stringify({ AlarmName: 'prod<->staging', NewStateValue: 'ALARM' }),
     );
     const header = blocks.find((b) => b.type === 'header');
@@ -259,7 +236,7 @@ describe('無害化のかけすぎで表示を壊さない', () => {
   });
 
   it('Health の見出しもそのままの文字を出す', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({ service: 'S3<>test', eventTypeCategory: 'issue' }),
     );
     const header = blocks.find((b) => b.type === 'header');
@@ -268,7 +245,7 @@ describe('無害化のかけすぎで表示を壊さない', () => {
   });
 
   it('mrkdwn 側は一度だけ無害化される', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'S3',
         eventTypeCategory: 'issue',
@@ -314,7 +291,7 @@ function anyLoneSurrogate(value: unknown): boolean {
 // 壊れた片割れは JSON として不正で、Slack 側に拒否されうる
 describe('長い文字を切るときに絵文字を壊さない', () => {
   it('アラーム名の途中に絵文字があっても壊れない', async () => {
-    const payload = await buildPayloadForMessage(
+    const payload = buildPayloadForMessage(
       JSON.stringify({
         // clip(name, 200) は 199 文字目で切る。絵文字を 198 から置くと
         // ちょうど分断される（この値でないと壊れないことを確認済み）
@@ -326,14 +303,14 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
   });
 
   it('Health のサービス名が絵文字だらけでも壊れない', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({ service: '🔥'.repeat(200), eventTypeCategory: 'issue' }),
     );
     expect(anyLoneSurrogate(blocks)).toBe(false);
   });
 
   it('本文が絵文字だらけでも壊れない', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'S3',
         eventTypeCategory: 'issue',
@@ -345,7 +322,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
 
   // エスケープで文字数が増え、切る位置がずれて絵文字に当たる場合
   it('エスケープで長さが変わっても壊れない', async () => {
-    const payload = await buildPayloadForMessage(
+    const payload = buildPayloadForMessage(
       JSON.stringify({
         // '<' は escapeMrkdwn で 4 文字（&lt;）になる。
         // 50 + 37*4 = 198 文字ぶんとなり、直後の絵文字が切り出し位置に重なる
@@ -357,7 +334,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
   });
 
   it('切る必要がなければそのまま出す', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({ service: '🔥S3', eventTypeCategory: 'issue' }),
     );
     const header = blocks.find((b) => b.type === 'header');
@@ -366,7 +343,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
 
   // 本文は 1500 で切るため、そこに絵文字を重ねる
   it('本文の切り出し位置に絵文字が来ても壊れない', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: 'S3',
         eventTypeCategory: 'issue',
@@ -387,7 +364,7 @@ describe('見出しの長さ制限', () => {
     ['Health', JSON.stringify({ source: 'aws.health', detail: { service: 'S'.repeat(500), eventTypeCategory: 'issue' } })],
     ['JSON でない本文', 'ただの本文'],
   ])('%s の見出しが上限を超えない', async (_label, message) => {
-    const blocks = await buildBlocksForMessage(message, 'x'.repeat(500));
+    const blocks = buildBlocksForMessage(message, 'x'.repeat(500));
     const header = blocks.find((b) => b.type === 'header');
     expect(header).toBeDefined();
     expect(header!.text!.text!.length).toBeLessThanOrEqual(HEADER_LIMIT);
@@ -400,7 +377,7 @@ describe('元から壊れた文字が混ざっていても落とす', () => {
   const BROKEN = '\ud83d'; // 対になっていないサロゲート
 
   it('短い文字列でも取り除く（切る必要がない場合）', async () => {
-    const payload = await buildPayloadForMessage(
+    const payload = buildPayloadForMessage(
       JSON.stringify({ AlarmName: `アラーム${BROKEN}名`, NewStateValue: 'ALARM' }),
     );
     // JSON の中に不正なエスケープ列が残らない
@@ -409,7 +386,7 @@ describe('元から壊れた文字が混ざっていても落とす', () => {
   });
 
   it('Health のイベントでも取り除く', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({
         service: `S3${BROKEN}`,
         eventTypeCategory: 'issue',
@@ -423,7 +400,7 @@ describe('元から壊れた文字が混ざっていても落とす', () => {
   // encodeURIComponent は壊れた文字で例外を投げる。
   // 送信前に落ちると通知そのものが失われる
   it('アラーム名が壊れていてもリンク生成で落ちない', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       JSON.stringify({ AlarmName: `alarm${BROKEN}x`, NewStateValue: 'ALARM' }),
     );
     const link = collectStrings(blocks).find((t) => t.includes('CloudWatch でアラームを開く'));
@@ -432,7 +409,7 @@ describe('元から壊れた文字が混ざっていても落とす', () => {
   });
 
   it('正常な絵文字は残す', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       healthMessage({ service: '🍶S3', eventTypeCategory: 'issue' }),
     );
     expect(collectStrings(blocks).join('')).toContain('🍶S3');
@@ -447,7 +424,7 @@ describe('Health イベントをログに残す', () => {
   async function capturedHealthLogs(message: string): Promise<Record<string, unknown>[]> {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await buildBlocksForMessage(message);
+      await runHandler(message);
       return spy.mock.calls
         .map(([line]) => line)
         .filter((line): line is string => typeof line === 'string')
@@ -539,31 +516,15 @@ describe('Health イベントをログに残す', () => {
 
   // 記録を残すのが目的なので、Slack が落ちているときこそ残っていてほしい
   it('Slack への送信が失敗しても残る', async () => {
-    const mod = await import('../index');
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => ({ ok: false, status: 500 }) as Response) as typeof fetch;
     try {
-      await expect(
-        mod.handler({
-          Records: [
-            {
-              Sns: {
-                Subject: null,
-                Message: healthMessage(connectIssue),
-                Timestamp: '2026-08-21T02:02:22Z',
-              },
-            },
-          ],
-        }),
-      ).rejects.toThrow();
+      await expect(runHandler(healthMessage(connectIssue), { ok: false })).rejects.toThrow();
       const logged = spy.mock.calls
         .map(([line]) => line)
         .filter((line): line is string => typeof line === 'string')
         .filter((line) => line.includes('aws-health-event'));
       expect(logged).toHaveLength(1);
     } finally {
-      globalThis.fetch = originalFetch;
       spy.mockRestore();
     }
   });
@@ -583,33 +544,33 @@ describe('アラームのアプリ名', () => {
     ['sakekasu-integrated-health-check-builder', '[共通基盤]'],
     ['someone-else-alarm', '[不明なアプリ]'],
   ])('%s の見出しに %s を出す', async (name, label) => {
-    const blocks = await buildBlocksForMessage(alarm(name));
+    const blocks = buildBlocksForMessage(alarm(name));
     const header = blocks.find((b) => b.type === 'header');
     expect(header!.text!.text).toContain(label);
     expect(header!.text!.text).toContain(name);
   });
 
   it('本文の欄にもアプリ名を出す', async () => {
-    const blocks = await buildBlocksForMessage(alarm('dev-sakekasu-learning-api-errors'));
+    const blocks = buildBlocksForMessage(alarm('dev-sakekasu-learning-api-errors'));
     const section = blocks.find((b) => b.fields);
     expect(section!.fields![0].text).toBe('*アプリ*\nlearning');
   });
 
   // プッシュ通知の 1 行目だけでも、どのアプリか分かるように
   it('通知プレビュー文にもアプリ名を出す', async () => {
-    const payload = await buildPayloadForMessage(alarm('sakekasu-kakeibo-prod-api-errors'));
+    const payload = buildPayloadForMessage(alarm('sakekasu-kakeibo-prod-api-errors'));
     expect(JSON.parse(payload).text).toContain('[kakeibo]');
   });
 
   // 発報だけでなく復旧も同じ形で届く
   it('復旧（OK）の通知にもアプリ名を出す', async () => {
-    const blocks = await buildBlocksForMessage(alarm('ReinventPlanner-ApiErrors', 'OK'));
+    const blocks = buildBlocksForMessage(alarm('ReinventPlanner-ApiErrors', 'OK'));
     const header = blocks.find((b) => b.type === 'header');
     expect(header!.text!.text).toBe('✅ [reinvent] 復旧しました: ReinventPlanner-ApiErrors');
   });
 
   it('AWS Health にはアプリ名を付けない（アカウント全体の話なので）', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       JSON.stringify({ source: 'aws.health', detail: { service: 'LAMBDA', eventTypeCategory: 'issue' } }),
     );
     const header = blocks.find((b) => b.type === 'header');
@@ -632,7 +593,7 @@ describe('アラームの説明の欄', () => {
   }
 
   async function descriptionSection(message: string): Promise<string> {
-    const blocks = await buildBlocksForMessage(message);
+    const blocks = buildBlocksForMessage(message);
     const section = blocks.find((b) => b.type === 'section' && b.text?.text?.includes(DESCRIPTION));
     return section!.text!.text!;
   }
@@ -657,7 +618,7 @@ describe('アラームの説明の欄', () => {
   });
 
   it('説明が無いアラームでは欄そのものを出さない', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       JSON.stringify({ AlarmName: 'sakekasu-integrated-x', NewStateValue: 'OK', OldStateValue: 'ALARM' }),
     );
     expect(flatten(blocks)).not.toContain('このアラームが見ているもの');
@@ -665,7 +626,7 @@ describe('アラームの説明の欄', () => {
   });
 
   it('OK のときも説明は無害化して出す', async () => {
-    const blocks = await buildBlocksForMessage(
+    const blocks = buildBlocksForMessage(
       JSON.stringify({
         AlarmName: 'sakekasu-integrated-x',
         AlarmDescription: '<!channel> 説明',
@@ -675,5 +636,28 @@ describe('アラームの説明の欄', () => {
     );
     expect(flatten(blocks)).toContain('&lt;!channel&gt; 説明');
     expect(flatten(blocks)).not.toContain('<!channel>');
+  });
+});
+
+// 組み立ての不具合で通知そのものを失わない。ただし黙って握りつぶさず、ログに残す
+describe('組み立てに失敗したとき', () => {
+  it('件名と本文をそのまま流し、エラーをログに残す', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      // 本文やサービス名が文字列でない Health イベントは、ログと組み立ての途中で例外になる
+      const message = JSON.stringify({
+        source: 'aws.health',
+        detail: { service: 123, eventDescription: [{ latestDescription: 456 }] },
+      });
+      const sent = JSON.parse(await runHandler(message, { subject: '件名' }));
+
+      expect(sent.text).toBe('件名');
+      expect(JSON.stringify(sent.blocks)).toContain('aws.health');
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      errorSpy.mockRestore();
+      logSpy.mockRestore();
+    }
   });
 });
