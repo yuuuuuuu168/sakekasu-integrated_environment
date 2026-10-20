@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { ApexRedirectStack } from '../lib/apex-redirect-stack';
+import { applyAppTag } from '../lib/app-tag';
 import { parseApps } from '../lib/apps';
 import { CdkdDeployStack } from '../lib/cdkd-deploy-stack';
 import { DnsStack } from '../lib/dns-stack';
@@ -26,11 +27,8 @@ import {
 
 const app = new cdk.App();
 
-// 全リソースに App タグを付ける。アプリごとのコストを Cost Explorer で分けるため。
-// デプロイ用ロールのガードレール（lib/deploy-guardrail.ts）の「他のアプリのタグが付いたリソースには
-// 触れない」判定にもこのタグを使う。4 アプリと共通基盤が同じアカウントに
-// 同居していて、名前の接頭辞では分けきれないためタグで見分ける
-cdk.Tags.of(app).add('App', 'integrated');
+// 全リソースに App タグを付ける（IAM ロールは除く。理由は lib/app-tag.ts）
+applyAppTag(app);
 const account = process.env.CDK_DEFAULT_ACCOUNT;
 
 function context(key: string): string | undefined {

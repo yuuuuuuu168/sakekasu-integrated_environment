@@ -3,6 +3,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import type { Construct } from 'constructs';
 import { cdkdAppRoleStatements, cdkdMonitoringStatements } from './cdkd-monitoring-statements';
 import { githubMainBranchPrincipal } from './github-principal';
+import { APP_TAG_VALUE } from './app-tag';
 import { deployGuardrailStatements } from './deploy-guardrail';
 import { createRoleBoundary, roleBoundaryArn } from './role-boundary';
 import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, DEPLOY_REGIONS, DEPLOY_ROLE_NAME, PREFIX } from './names';
@@ -249,7 +250,7 @@ export class CdkdDeployStack extends cdk.Stack {
       description: 'Deny-only guardrail that keeps cdkd deploys of sakekasu-integrated inside the integrated app',
       statements: deployGuardrailStatements({
         account,
-        app: 'integrated',
+        app: APP_TAG_VALUE,
         resourceNamePrefixes: [`${PREFIX}-`],
         protectedRoleNames: [CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME],
         roleBoundaryArn: roleBoundaryArn(account),
