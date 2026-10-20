@@ -1,44 +1,12 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as url from 'node:url';
-
-const here = path.dirname(url.fileURLToPath(import.meta.url));
-
-/** 4 アプリと同じ共通テーマ（sakekasu-template から同期される） */
-export const THEME_CSS_PATH = path.join(here, '../../theme/sakekasu-theme.css');
-
-/** 共通テーマの変数（--sk- を外した名前 → 16 進 6 桁の色） */
-export type ThemeColors = Record<string, string>;
-
-/** CSS の中から `selector { ... }` の中身を取り出し、--sk-* の色だけを表にする */
-function readBlock(css: string, selector: string): ThemeColors {
-  const start = css.indexOf(`${selector} {`);
-  if (start === -1) throw new Error(`共通テーマに ${selector} のブロックが無い`);
-  const open = css.indexOf('{', start);
-  const close = css.indexOf('}', open);
-  const colors: ThemeColors = {};
-  for (const [, name, value] of css.slice(open + 1, close).matchAll(/--sk-([\w-]+)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g)) {
-    colors[name] = value.slice(1).toLowerCase();
-  }
-  return colors;
-}
-
-/** 共通テーマのライトとダークの色を読む。ダークはライトの上に上書きする */
-export function readTheme(css: string): { light: ThemeColors; dark: ThemeColors } {
-  const light = readBlock(css, ':root');
-  const dark = { ...light, ...readBlock(css, ":root[data-theme='dark']") };
-  return { light, dark };
-}
+import { themeColor, themeFromFile, THEME_CSS_PATH, type Theme, type ThemeColors } from './theme';
 
 /** Cognito の色は RRGGBBAA。不透明で使う */
 function rgba(colors: ThemeColors, name: string): string {
-  const hex = colors[name];
-  if (!hex) throw new Error(`共通テーマに --sk-${name} が無い`);
-  return `${hex}ff`;
+  return `${themeColor(colors, name)}ff`;
 }
 
 /** ライトとダークで同じ形の値を作る */
-function bothModes<T>(build: (c: (name: string) => string) => T, theme: { light: ThemeColors; dark: ThemeColors }) {
+function bothModes<T>(build: (c: (name: string) => string) => T, theme: Theme) {
   return {
     lightMode: build((name) => rgba(theme.light, name)),
     darkMode: build((name) => rgba(theme.dark, name)),
@@ -57,7 +25,7 @@ function bothModes<T>(build: (c: (name: string) => string) => T, theme: { light:
  * - 背景の画像（Cognito の既定の模様）は切り、共通テーマの地の色だけにする
  * - フォント・角丸・ロゴの位置などは既定のまま
  */
-export function buildLoginBranding(theme: { light: ThemeColors; dark: ThemeColors }) {
+export function buildLoginBranding(theme: Theme) {
   const m = <T>(build: (c: (name: string) => string) => T) => bothModes(build, theme);
 
   return {
@@ -176,5 +144,5 @@ export function buildLoginBranding(theme: { light: ThemeColors; dark: ThemeColor
 
 /** 共通テーマのファイルを読んで、ブランディング設定を作る */
 export function loginBrandingFromThemeFile(themePath = THEME_CSS_PATH) {
-  return buildLoginBranding(readTheme(fs.readFileSync(themePath, 'utf8')));
+  return buildLoginBranding(themeFromFile(themePath));
 }

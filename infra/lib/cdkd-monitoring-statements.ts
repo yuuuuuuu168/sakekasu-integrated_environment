@@ -1,9 +1,13 @@
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { roleBoundaryArn } from './role-boundary';
-import { APP_ROLE_PREFIX, CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME, PREFIX, ROLE_BOUNDARY_NAME } from './names';
-
-/** cdkd が触ってよいリージョン（cdkd-deploy-stack.ts と同じ） */
-const REGIONS = ['ap-northeast-1', 'us-east-1'];
+import {
+  APP_ROLE_PREFIX,
+  CDKD_DEPLOY_ROLE_NAME,
+  DEPLOY_REGIONS,
+  DEPLOY_ROLE_NAME,
+  PREFIX,
+  ROLE_BOUNDARY_NAME,
+} from './names';
 
 /** ロールを渡してよいサービス。監視の Lambda と、Health の転送ルールだけ */
 export const PASS_ROLE_TARGET_SERVICES = ['lambda.amazonaws.com', 'events.amazonaws.com'];
@@ -37,7 +41,7 @@ export const BOUNDED_ROLE_WRITE_ACTIONS = [
 export function cdkdMonitoringStatements(account: string): iam.PolicyStatement[] {
   // 読みやすさとテストのため、パーティションは aws に固定する（このアカウントは商用リージョンだけ）
   const partition = 'aws';
-  const regionCondition = { StringEquals: { 'aws:RequestedRegion': REGIONS } };
+  const regionCondition = { StringEquals: { 'aws:RequestedRegion': DEPLOY_REGIONS } };
 
   return [
     // --- Lambda（Slack 通知と外形監視）---
@@ -178,22 +182,22 @@ export function cdkdMonitoringStatements(account: string): iam.PolicyStatement[]
      * DescribeRepositories。上げる前に HeadObject（s3:GetObject）で有無を見て、無ければ PutObject。
      * Lambda の作成・更新では、Lambda が呼び出し元の権限でコードを読むので s3:GetObject が要る。
      *
-     * バケットは kakeibo・learning と共用。キーは中身のハッシュなので、名前で絞れない。
+     * バケットは全アプリで共用。キーは中身のハッシュなので、名前で絞れない。
      */
     new iam.PolicyStatement({
       sid: 'CdkdAssetBucket',
       actions: ['s3:ListBucket', 's3:GetBucketLocation'],
-      resources: REGIONS.map((r) => `arn:${partition}:s3:::cdkd-assets-${account}-${r}`),
+      resources: DEPLOY_REGIONS.map((r) => `arn:${partition}:s3:::cdkd-assets-${account}-${r}`),
     }),
     new iam.PolicyStatement({
       sid: 'CdkdAssetObjects',
       actions: ['s3:GetObject', 's3:PutObject'],
-      resources: REGIONS.map((r) => `arn:${partition}:s3:::cdkd-assets-${account}-${r}/*`),
+      resources: DEPLOY_REGIONS.map((r) => `arn:${partition}:s3:::cdkd-assets-${account}-${r}/*`),
     }),
     new iam.PolicyStatement({
       sid: 'CdkdAssetRepository',
       actions: ['ecr:DescribeRepositories'],
-      resources: REGIONS.map((r) => `arn:${partition}:ecr:${r}:${account}:repository/cdkd-container-assets-${account}-${r}`),
+      resources: DEPLOY_REGIONS.map((r) => `arn:${partition}:ecr:${r}:${account}:repository/cdkd-container-assets-${account}-${r}`),
     }),
   ];
 }

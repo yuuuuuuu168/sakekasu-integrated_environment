@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as url from 'node:url';
-import { buildLoginBranding, loginBrandingFromThemeFile, readTheme, THEME_CSS_PATH } from '../lib/login-branding';
+import { buildLoginBranding, loginBrandingFromThemeFile } from '../lib/login-branding';
+import { readTheme, THEME_CSS_PATH } from '../lib/theme';
 
 const here = path.dirname(url.fileURLToPath(import.meta.url));
 const DEFAULTS = JSON.parse(

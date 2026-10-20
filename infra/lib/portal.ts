@@ -1,5 +1,5 @@
-import * as fs from 'node:fs';
-import { readTheme, THEME_CSS_PATH, type ThemeColors } from './login-branding';
+import { ROOT_DOMAIN } from './names';
+import { themeColor, themeFromFile, type Theme, type ThemeColors } from './theme';
 
 /** 入口に並べるアプリ。並びはこの順 */
 export interface PortalApp {
@@ -14,11 +14,12 @@ export interface PortalApp {
   url: string;
 }
 
+/** ホスト名はどれも cdk.json の apps の callbackUrls にある（apex-redirect-stack.test.ts） */
 export const PORTAL_APPS: PortalApp[] = [
-  { label: '酒カス', icon: '🍶', url: 'https://sake.sakekasu-builder.com/?sso=1' },
-  { label: '家計簿', icon: '💰', url: 'https://kakeibo.sakekasu-builder.com/?sso=1' },
-  { label: 'learning', icon: '📚', url: 'https://learning.sakekasu-builder.com/?sso=1' },
-  { label: 're:Invent', icon: '☁️', url: 'https://reinvent.sakekasu-builder.com/?sso=1' },
+  { label: '酒カス', icon: '🍶', url: `https://sake.${ROOT_DOMAIN}/?sso=1` },
+  { label: '家計簿', icon: '💰', url: `https://kakeibo.${ROOT_DOMAIN}/?sso=1` },
+  { label: 'learning', icon: '📚', url: `https://learning.${ROOT_DOMAIN}/?sso=1` },
+  { label: 're:Invent', icon: '☁️', url: `https://reinvent.${ROOT_DOMAIN}/?sso=1` },
 ];
 
 /** 日本語の字形のフォント。iPhone・Mac はヒラギノ、Windows は游ゴシックかメイリオ、それ以外は Noto や IPA */
@@ -40,10 +41,7 @@ function escapeHtml(value: string): string {
 function vars(c: ThemeColors): string {
   const names = ['bg', 'surface', 'border', 'ink', 'muted', 'accent', 'accent-ink', 'gold-line'];
   return names
-    .map((name) => {
-      if (!c[name]) throw new Error(`共通テーマに --sk-${name} が無い`);
-      return `--${name}:#${c[name]}`;
-    })
+    .map((name) => `--${name}:#${themeColor(c, name)}`)
     .join(';');
 }
 
@@ -65,7 +63,7 @@ export interface PortalParts {
   apps: string;
 }
 
-export function buildPortalParts(theme: { light: ThemeColors; dark: ThemeColors }, apps = PORTAL_APPS): PortalParts {
+function buildPortalParts(theme: Theme, apps = PORTAL_APPS): PortalParts {
   for (const app of apps) {
     if (new URL(app.url).protocol !== 'https:') throw new Error(`入口のリンクは https にする: ${app.url}`);
   }
@@ -149,7 +147,7 @@ export const PORTAL_MANIFEST_PATH = '/manifest.webmanifest';
  * アイコンを先に見る（無いと頭文字のアイコンを作る）。display は browser にして、追加したアイコンは
  * ふだんのブラウザで開く（Web アプリとして開くと、ログインの状態がブラウザと別になるため）
  */
-export function buildPortalManifest(theme: { light: ThemeColors; dark: ThemeColors }): string {
+function buildPortalManifest(theme: Theme): string {
   return JSON.stringify({
     name: 'sakekasu',
     short_name: 'sakekasu',
@@ -164,7 +162,7 @@ export function buildPortalManifest(theme: { light: ThemeColors; dark: ThemeColo
 }
 
 export function portalManifestFromThemeFile(): string {
-  return buildPortalManifest(readTheme(fs.readFileSync(THEME_CSS_PATH, 'utf8')));
+  return buildPortalManifest(themeFromFile());
 }
 
 /** 1 枚のページにつなぐ。関数の中の page() と同じつなぎ方（テストと見た目の確認に使う） */
@@ -173,5 +171,5 @@ export function renderPage(parts: PortalParts, which: 'top' | 'apps'): string {
 }
 
 export function portalPartsFromThemeFile(): PortalParts {
-  return buildPortalParts(readTheme(fs.readFileSync(THEME_CSS_PATH, 'utf8')));
+  return buildPortalParts(themeFromFile());
 }

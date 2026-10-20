@@ -25,6 +25,9 @@ jobs:
     defaults:
       run:
         working-directory: infra
+    # 合成はアカウント ID をダミーにして通す
+    env:
+      CDK_DEFAULT_ACCOUNT: '000000000000'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,20 +38,14 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npx tsc --noEmit
       - run: npm test
-      # アカウント ID はダミーで合成だけ通す。独自ドメインまで有効にした形も合成しておく
+      # cdk.json のまま（独自ドメインを有効にした形）
       - run: npx cdk synth -q
-        env:
-          CDK_DEFAULT_ACCOUNT: '000000000000'
+      # 独自ドメインの ID を外した形（Cognito のドメインと CloudFront の既定のドメインで出す）も合成しておく
       - run: >-
           npx cdk synth -q
-          -c authHostedZoneId=Z0000000000TEST
-          -c authCertificateArn=arn:aws:acm:us-east-1:000000000000:certificate/ci
-        env:
-          CDK_DEFAULT_ACCOUNT: '000000000000'
+          -c authHostedZoneId=
+          -c authCertificateId=
+          -c apexCertificateId=
       # GitHub Actions のロールのスタックも合成しておく
       - run: npx cdk synth -q -c github-oidc=true
-        env:
-          CDK_DEFAULT_ACCOUNT: '000000000000'
       - run: npx cdk synth -q -c cdkd-deploy=true
-        env:
-          CDK_DEFAULT_ACCOUNT: '000000000000'

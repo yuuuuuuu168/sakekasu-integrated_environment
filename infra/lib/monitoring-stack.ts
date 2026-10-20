@@ -354,7 +354,7 @@ export class MonitoringStack extends cdk.Stack {
 
   /**
    * 監視の Lambda を作る。名前・ロール・ロググループはどれも `sakekasu-integrated-` で始め、
-   * cdkd 用ロールの許可の範囲（cdkd-deploy-stack.ts）に収める。
+   * cdkd 用ロールの許可の範囲（cdkd-monitoring-statements.ts）に収める。
    *
    * ロールは明示して作り、名前を `sakekasu-integrated-app-*` にする。CDK に任せると
    * 自動生成の名前になり、cdkd 用ロールが作れる範囲を名前で絞れない。

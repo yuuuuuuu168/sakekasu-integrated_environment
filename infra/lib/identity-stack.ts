@@ -27,7 +27,7 @@ export interface IdentityStackProps extends cdk.StackProps {
  * パスキーの登録画面（/passkeys/add）を開くときに使うアプリ。このクライアントだけに
  * aws.cognito.signin.user.admin のスコープを許す（docs/identity.md の「パスキーで入る」）
  */
-export const PASSKEY_REGISTRATION_APP = 'reinvent';
+const PASSKEY_REGISTRATION_APP = 'reinvent';
 
 /** パスワードの最小の長さ。利用者の指定で 16 文字以上にしている */
 export const PASSWORD_MIN_LENGTH = 16;

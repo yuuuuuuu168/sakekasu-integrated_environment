@@ -126,7 +126,7 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
   始まるものだけ。操作は cdkd の実装が呼ぶ API を列挙した（サービス単位のワイルドカードは使わない）。
   トピックへの publish と、ログの中身の読み取りは持たない
 - Lambda のコードの置き場所（cdkd のアセットのバケット `cdkd-assets-<アカウント>-<リージョン>`）の読み書き。
-  kakeibo・learning と共用で、キーは中身のハッシュなので名前では絞れない
+  全アプリで共用で、キーは中身のハッシュなので名前では絞れない
 - Cognito はユーザープールの設定だけ。ユーザーそのものの操作（`Admin*`、`ListUsers` など）は拒否する
 - Route53 のレコードは `auth.sakekasu-builder.com` の配下だけ書ける
 - 証明書は参照（`acm:DescribeCertificate`）だけ。作成はコンソールで行う

@@ -1,10 +1,19 @@
 /** このリポジトリのスタック名・リソース名の接頭辞 */
 export const PREFIX = 'sakekasu-integrated';
 
+/** 4 アプリと共通基盤が使うドメイン。ゾーンは Organization の管理アカウントにある */
+export const ROOT_DOMAIN = 'sakekasu-builder.com';
+
 /** 共通ログイン画面のドメイン */
-export const AUTH_DOMAIN = 'auth.sakekasu-builder.com';
+export const AUTH_DOMAIN = `auth.${ROOT_DOMAIN}`;
 
 export const REGION = 'ap-northeast-1';
+
+/**
+ * cdkd が触ってよいリージョン。Cognito などは東京、証明書と Route53・CloudFront・グローバルの
+ * AWS Health は us-east-1。deploy ワークフローの置き場所の確認もこの 2 つを見る（workflows.test.ts）
+ */
+export const DEPLOY_REGIONS = [REGION, 'us-east-1'];
 
 /** 信頼する GitHub リポジトリ */
 export const REPOSITORY = 'yuuuuuuu168/sakekasu-integrated_environment';
@@ -12,6 +21,8 @@ export const REPOSITORY = 'yuuuuuuu168/sakekasu-integrated_environment';
 /** GitHub Actions が引き受けるロールの名前 */
 export const DEPLOY_ROLE_NAME = `${PREFIX}-github-actions-deploy`;
 export const CDKD_DEPLOY_ROLE_NAME = `${PREFIX}-github-actions-cdkd`;
+/** cdkd 用ロールのスタック。deploy ワークフローが CloudFormation で入れる */
+export const CDKD_DEPLOY_STACK_NAME = `${PREFIX}-cdkd-deploy`;
 
 /*
  * 監視と Slack 通知（docs/monitoring.md）
@@ -59,6 +70,6 @@ export const ROLE_BOUNDARY_NAME = `${PREFIX}-role-boundary`;
 export const APEX_REDIRECT_STACK_NAME = `${PREFIX}-apex-redirect`;
 export const APEX_REDIRECT_REGION = 'us-east-1';
 /** 転送で受けるドメイン。どちらも親ゾーン（Organization の管理アカウント）にある */
-export const APEX_DOMAINS = ['sakekasu-builder.com', 'www.sakekasu-builder.com'];
+export const APEX_DOMAINS = [ROOT_DOMAIN, `www.${ROOT_DOMAIN}`];
 /** 転送先。builder の画面（sakekasu-builder の docs/sake-subdomain.md） */
-export const APEX_REDIRECT_TARGET = 'sake.sakekasu-builder.com';
+export const APEX_REDIRECT_TARGET = `sake.${ROOT_DOMAIN}`;

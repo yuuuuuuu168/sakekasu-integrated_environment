@@ -19,9 +19,9 @@ export interface DnsStackProps extends cdk.StackProps {
  *   1. このスタックを作る（NS 4 つが決まる）
  *   2. 親のゾーンに、このサブドメインの NS レコードを入れる（管理アカウントでの手作業）
  *   3. dig NS で委任が効いたことを確かめる
- *   4. cdk.json に authHostedZoneId を書く（証明書のスタックが作られる）
+ *   4. cdk.json に authHostedZoneId を書き、us-east-1 に証明書をコンソールで作る（bin/app.ts）
  *
- * 3 を飛ばすと証明書の DNS 検証が通らず、deploy が終わらない。
+ * 3 を飛ばすと証明書の DNS 検証が通らず、証明書が発行されない。
  * ゾーンは消えない設定にしてある。作り直すと NS が変わり、委任を入れ直すことになる。
  */
 export class DnsStack extends cdk.Stack {
