@@ -119,7 +119,8 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
   作成と権限の書き換え（`CreateRole`、`PutRolePolicy`、`AttachRolePolicy` など）は、Permissions Boundary
   `sakekasu-integrated-role-boundary` が付いているときだけ許す。境界はこのスタック（CloudFormation）が作り、
   中身は監視に要る操作だけ（`infra/lib/role-boundary.ts`）。境界の無いロールの作成・書き換え、境界の取り外し、
-  境界ポリシーの書き換え・削除は Deny する。信頼ポリシーの書き換え（`UpdateAssumeRolePolicy`）は持たない
+  信頼ポリシーの書き換え（`UpdateAssumeRolePolicy`）、境界ポリシーの書き換え・削除は、ガードレール
+  （`infra/lib/deploy-guardrail.ts`。[aws-infra-rules.md](aws-infra-rules.md) の「Permissions Boundary」）で Deny する
 - `iam:PassRole` は `sakekasu-integrated-app-*` を Lambda と EventBridge に渡すときだけ
 - GitHub Actions のロール（`sakekasu-integrated-github-actions-*`）には IAM の操作を一切できない（Deny）
 - Lambda、SNS、EventBridge のルール、CloudWatch のアラーム、ロググループは、名前が `sakekasu-integrated-` で
@@ -132,7 +133,7 @@ kakeibo は AdministratorAccess だが、こちらは権限を絞っている（
 - 証明書は参照（`acm:DescribeCertificate`）だけ。作成はコンソールで行う
 - Cloud Control API（`cloudformation:CreateResource` など）。cdkd はユーザープールのドメインやクライアントをこれで作る。
   Cloud Control は呼び出し元の権限で各サービスを呼ぶので、上で許した以上のことはできない。CloudFormation のスタック操作は許していない
-- cdkd の状態バケットは kakeibo・learning と共用なので、書けるのは `cdkd/sakekasu-integrated-*` の下だけ
+- cdkd の状態バケットは全アプリで共用なので、書けるのは `cdkd/sakekasu-integrated-*` の下だけ
 - リージョンは ap-northeast-1 と us-east-1 に限る
 
 権限が足りなければ、デプロイの途中で `AccessDenied` で落ちる。そのときはエラーに出た操作を
