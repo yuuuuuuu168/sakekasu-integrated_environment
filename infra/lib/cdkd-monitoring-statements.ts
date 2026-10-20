@@ -6,7 +6,6 @@ import {
   DEPLOY_REGIONS,
   DEPLOY_ROLE_NAME,
   PREFIX,
-  ROLE_BOUNDARY_NAME,
 } from './names';
 
 /** ロールを渡してよいサービス。監視の Lambda と、Health の転送ルールだけ */
@@ -14,7 +13,8 @@ export const PASS_ROLE_TARGET_SERVICES = ['lambda.amazonaws.com', 'events.amazon
 
 /**
  * ロールの権限を書き換える操作。どれも iam:PermissionsBoundary の条件キーが効く。
- * 境界の付いたロールにだけ許し、境界の無いロールには Deny する
+ * 境界の付いたロールにだけ許す。境界の無いロールへの書き込みを拒否する Deny は
+ * ガードレール（deploy-guardrail.ts の DenyRoleWritesWithoutBoundary）にある
  */
 export const BOUNDED_ROLE_WRITE_ACTIONS = [
   'iam:CreateRole',
@@ -262,36 +262,9 @@ export function cdkdAppRoleStatements(account: string): iam.PolicyStatement[] {
       conditions: { StringEquals: { 'iam:PassedToService': PASS_ROLE_TARGET_SERVICES } },
     }),
 
-    // 境界の無いロールの作成・書き換えを、許可の書き方によらず塞ぐ。
-    // 上の Allow を将来うっかり広げても、ここが残っていれば境界の外のロールは生まれない
-    new iam.PolicyStatement({
-      sid: 'DenyRoleWritesWithoutBoundary',
-      effect: iam.Effect.DENY,
-      actions: BOUNDED_ROLE_WRITE_ACTIONS,
-      resources: ['*'],
-      conditions: { ArnNotEquals: { 'iam:PermissionsBoundary': boundaryArn } },
-    }),
-    // 境界を外されると上の条件が意味を失う
-    new iam.PolicyStatement({
-      sid: 'DenyRemovingBoundary',
-      effect: iam.Effect.DENY,
-      actions: ['iam:DeleteRolePermissionsBoundary', 'iam:DeleteUserPermissionsBoundary'],
-      resources: ['*'],
-    }),
-    // 境界の中身の書き換えと削除。境界は CloudFormation（cdkd-deploy スタック）だけが管理する
-    new iam.PolicyStatement({
-      sid: 'DenyRewritingBoundary',
-      effect: iam.Effect.DENY,
-      actions: [
-        'iam:CreatePolicyVersion',
-        'iam:DeletePolicyVersion',
-        'iam:SetDefaultPolicyVersion',
-        'iam:DeletePolicy',
-        'iam:TagPolicy',
-        'iam:UntagPolicy',
-      ],
-      resources: [`arn:${partition}:iam::${account}:policy/${ROLE_BOUNDARY_NAME}`],
-    }),
+    // 境界の無いロールの作成・書き換え、境界と信頼ポリシーの取り外し・書き換え、境界ポリシーの
+    // 書き換えを拒否する Deny は、ガードレール（deploy-guardrail.ts）に roleBoundaryArn を渡して入れている。
+    // 上の Allow を将来うっかり広げても、そちらが残っていれば境界の外のロールは生まれない
     // GitHub Actions のロールは触らせない。名前の範囲から外してあるが、念のため明示する
     new iam.PolicyStatement({
       sid: 'DenyTamperingWithDeployRoles',

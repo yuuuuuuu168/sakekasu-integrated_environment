@@ -4,7 +4,7 @@ import type { Construct } from 'constructs';
 import { cdkdAppRoleStatements, cdkdMonitoringStatements } from './cdkd-monitoring-statements';
 import { githubMainBranchPrincipal } from './github-principal';
 import { deployGuardrailStatements } from './deploy-guardrail';
-import { createRoleBoundary } from './role-boundary';
+import { createRoleBoundary, roleBoundaryArn } from './role-boundary';
 import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, DEPLOY_REGIONS, DEPLOY_ROLE_NAME, PREFIX } from './names';
 
 export interface CdkdDeployStackProps extends cdk.StackProps {
@@ -35,7 +35,7 @@ export const DENIED_USER_ACTIONS = [
  *
  * - IAM はロール `sakekasu-integrated-app-*` に限り、Permissions Boundary
  *   （`sakekasu-integrated-role-boundary`。このスタックが作る）が付いている場合だけ作れる。
- *   境界の無いロールの作成、境界の取り外し・書き換えは拒否する（cdkd-monitoring-statements.ts）
+ *   境界の無いロールの作成、境界の取り外し・書き換えは拒否する（ガードレール。deploy-guardrail.ts）
  * - Cognito はユーザープールの設定だけ。ユーザーそのものの操作は拒否する
  * - Route53 のレコードは auth.sakekasu-builder.com の配下だけ書ける
  * - cdkd の状態バケットは他のアプリと共用なので、このリポジトリのスタックの分だけ書ける
@@ -242,7 +242,8 @@ export class CdkdDeployStack extends cdk.Stack {
     });
 
     // 同じアカウントにいる 4 アプリのリソースに触れないためのガードレール（Deny だけ）。
-    // 中身は lib/deploy-guardrail.ts
+    // 中身は lib/deploy-guardrail.ts。境界を渡すので、境界の無いロールの作成・書き換え、
+    // 境界と信頼ポリシーの取り外し・書き換え、境界ポリシーの書き換えもここで拒否する
     const guardrailPolicy = new iam.ManagedPolicy(this, 'CdkdGuardrailPolicy', {
       managedPolicyName: `${PREFIX}-cdkd-deploy-guardrail`,
       description: 'Deny-only guardrail that keeps cdkd deploys of sakekasu-integrated inside the integrated app',
@@ -251,6 +252,7 @@ export class CdkdDeployStack extends cdk.Stack {
         app: 'integrated',
         resourceNamePrefixes: [`${PREFIX}-`],
         protectedRoleNames: [CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME],
+        roleBoundaryArn: roleBoundaryArn(account),
       }),
     });
 

@@ -118,22 +118,35 @@ describe('cdkd 用ロール（権限を絞る）', () => {
       expect(writes[0].Condition).toEqual({ ArnEquals: { 'iam:PermissionsBoundary': BOUNDARY_ARN } });
     });
 
+    // Deny はガードレール（deploy-guardrail.ts）に境界の ARN を渡して入れる（docs/aws-infra-rules.md）
     it('境界の無いロールの作成・書き換えは Deny する', () => {
       const deny = denies().find((s) => s.Sid === 'DenyRoleWritesWithoutBoundary');
       expect(deny).toBeDefined();
-      expect(asArray(deny!.Action)).toEqual(expect.arrayContaining(['iam:CreateRole', 'iam:PutRolePolicy', 'iam:AttachRolePolicy']));
-      expect(deny!.Resource).toBe('*');
+      // 権限を増やす操作は全部入る。減らす操作（DeleteRolePolicy、DetachRolePolicy）は、
+      // 境界の無い古いロールを cdkd が消せるよう止めない
+      const growing = BOUNDED_ROLE_WRITE_ACTIONS.filter((a) => !/^iam:(Delete|Detach)/.test(a));
+      expect(asArray(deny!.Action)).toEqual(expect.arrayContaining(growing));
+      expect(asArray(deny!.Resource)).toEqual([`arn:aws:iam::${ACCOUNT}:role/sakekasu-integrated-*`]);
       expect(deny!.Condition).toEqual({ ArnNotEquals: { 'iam:PermissionsBoundary': BOUNDARY_ARN } });
     });
 
-    it('境界の取り外しと、境界ポリシーの書き換え・削除は Deny する', () => {
-      const removing = denies().find((s) => asArray(s.Action).includes('iam:DeleteRolePermissionsBoundary'));
-      expect(removing?.Resource).toBe('*');
-      const rewriting = denies().find((s) => asArray(s.Action).includes('iam:CreatePolicyVersion'));
+    it('境界と信頼ポリシーの取り外し・書き換えと、境界ポリシーの書き換え・削除は Deny する', () => {
+      const removing = denies().find((s) => s.Sid === 'DenyRemovingBoundaryAndTrust');
+      expect(asArray(removing!.Action).sort()).toEqual(['iam:DeleteRolePermissionsBoundary', 'iam:UpdateAssumeRolePolicy']);
+      expect(asArray(removing!.Resource)).toEqual([`arn:aws:iam::${ACCOUNT}:role/sakekasu-integrated-*`]);
+
+      const rewriting = denies().find((s) => s.Sid === 'DenyRewritingBoundary');
       expect(asArray(rewriting!.Action)).toEqual(
         expect.arrayContaining(['iam:CreatePolicyVersion', 'iam:SetDefaultPolicyVersion', 'iam:DeletePolicy']),
       );
-      expect(rewriting!.Resource).toBe(BOUNDARY_ARN);
+      expect(asArray(rewriting!.Resource)).toEqual([BOUNDARY_ARN]);
+    });
+
+    // 境界まわりの Deny は、以前は監視の分の管理ポリシーにも別の中身で二重に書いていた
+    it('同じ Sid の Deny を 2 か所に書かない', () => {
+      const sids = denies().map((s) => s.Sid);
+      expect(sids.length).toBeGreaterThan(0);
+      expect(new Set(sids).size).toBe(sids.length);
     });
 
     it('デプロイ用ロール自身には一切触れない', () => {
