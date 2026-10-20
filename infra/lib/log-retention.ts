@@ -6,7 +6,7 @@ import type { Construct } from 'constructs';
  * Lambda のログの保持期間。既定では無期限に残るので、30 日で消す。
  * アラームはメトリクス（15 か月残る）で判定するので、ログを消しても動作には影響しない。
  */
-export const LAMBDA_LOG_RETENTION = logs.RetentionDays.ONE_MONTH;
+const LAMBDA_LOG_RETENTION = logs.RetentionDays.ONE_MONTH;
 
 /**
  * Lambda に渡すロググループを明示して作る。作りは sakekasu-builder の lib/log-retention.ts に倣った。

@@ -5,15 +5,12 @@ import { cdkdAppRoleStatements, cdkdMonitoringStatements } from './cdkd-monitori
 import { githubMainBranchPrincipal } from './github-principal';
 import { deployGuardrailStatements } from './deploy-guardrail';
 import { createRoleBoundary } from './role-boundary';
-import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, DEPLOY_ROLE_NAME, PREFIX } from './names';
+import { AUTH_DOMAIN, CDKD_DEPLOY_ROLE_NAME, DEPLOY_REGIONS, DEPLOY_ROLE_NAME, PREFIX } from './names';
 
 export interface CdkdDeployStackProps extends cdk.StackProps {
   /** 信頼する GitHub リポジトリ（owner/repo 形式） */
   repository: string;
 }
-
-/** cdkd が触ってよいリージョン。Cognito などは東京、証明書と Route53・CloudFront は us-east-1 */
-export const ALLOWED_REGIONS = ['ap-northeast-1', 'us-east-1'];
 
 /**
  * Cognito のうち、ユーザーそのものを読み書きする操作。cdkd は使わないので明示的に拒否する。
@@ -33,7 +30,7 @@ export const DENIED_USER_ACTIONS = [
  *
  * cdkd は CloudFormation を通さず、各サービスの API を呼び出し元の権限で直接叩く。
  * sakekasu-kakeibo では AdministratorAccess を付けているが、こちらは利用者の方針で
- * いま置いているスタック（ゾーン、ユーザープール、監視）に要る操作だけを許す。
+ * いま置いているスタック（ゾーン、ユーザープール、監視、apex の入口と転送）に要る操作だけを許す。
  * 足りなければデプロイの途中で AccessDenied で落ちるので、そのたびに足す。
  *
  * - IAM はロール `sakekasu-integrated-app-*` に限り、Permissions Boundary
@@ -52,7 +49,7 @@ export class CdkdDeployStack extends cdk.Stack {
 
     const account = this.account;
     const partition = this.partition;
-    const regionCondition = { StringEquals: { 'aws:RequestedRegion': ALLOWED_REGIONS } };
+    const regionCondition = { StringEquals: { 'aws:RequestedRegion': DEPLOY_REGIONS } };
 
     const policy = new iam.ManagedPolicy(this, 'CdkdDeployPolicy', {
       managedPolicyName: `${PREFIX}-cdkd-deploy`,
@@ -65,7 +62,7 @@ export class CdkdDeployStack extends cdk.Stack {
           resources: ['*'],
         }),
 
-        // cdkd の状態。バケットは kakeibo・learning と共用なので、書けるのはこのリポジトリの分だけ
+        // cdkd の状態。バケットは全アプリで共用なので、書けるのはこのリポジトリの分だけ
         new iam.PolicyStatement({
           sid: 'CdkdStateList',
           // ListBucketVersions は、失敗時のロールバック記録の古い版を消すときに cdkd が使う

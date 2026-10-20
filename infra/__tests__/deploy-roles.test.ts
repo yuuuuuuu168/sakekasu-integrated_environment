@@ -19,8 +19,13 @@ interface Statement {
 
 const asArray = (v: string | string[]) => (Array.isArray(v) ? v : [v]);
 
+/** 合成は重いので 1 回だけ行い、各テストで使い回す（Template は読むだけ） */
+let cachedCdkdTemplate: Template | undefined;
 function cdkdTemplate() {
-  return Template.fromStack(new CdkdDeployStack(new cdk.App(), 'test-cdkd', { repository: REPOSITORY, env }));
+  cachedCdkdTemplate ??= Template.fromStack(
+    new CdkdDeployStack(new cdk.App(), 'test-cdkd', { repository: REPOSITORY, env }),
+  );
+  return cachedCdkdTemplate;
 }
 
 const BOUNDARY_ARN = `arn:aws:iam::${ACCOUNT}:policy/sakekasu-integrated-role-boundary`;

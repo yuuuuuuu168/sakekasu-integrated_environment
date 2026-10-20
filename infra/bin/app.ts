@@ -15,6 +15,7 @@ import {
   APEX_REDIRECT_STACK_NAME,
   APEX_REDIRECT_TARGET,
   AUTH_DOMAIN,
+  CDKD_DEPLOY_STACK_NAME,
   GLOBAL_HEALTH_REGION,
   HEALTH_GLOBAL_STACK_NAME,
   MONITORING_STACK_NAME,
@@ -67,7 +68,7 @@ function certificateArn(name: string): string | undefined {
 if (app.node.tryGetContext('github-oidc')) {
   new GithubOidcStack(app, `${PREFIX}-github-oidc`, { repository: REPOSITORY, env: { account, region: REGION } });
 } else if (app.node.tryGetContext('cdkd-deploy')) {
-  new CdkdDeployStack(app, `${PREFIX}-cdkd-deploy`, { repository: REPOSITORY, env: { account, region: REGION } });
+  new CdkdDeployStack(app, CDKD_DEPLOY_STACK_NAME, { repository: REPOSITORY, env: { account, region: REGION } });
 } else {
   buildPlatformStacks();
 }

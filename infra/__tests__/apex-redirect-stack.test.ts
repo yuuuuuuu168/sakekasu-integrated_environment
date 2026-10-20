@@ -81,6 +81,15 @@ describe('転送の関数', () => {
     for (const app of PORTAL_APPS) expect(new URL(app.url).searchParams.get('sso')).toBe('1');
   });
 
+  // 入口のリンクは、共通ログインに登録したアプリのどれかを指す（ホスト名の書き間違いで迷子にしない）
+  it('入口のリンクのホストは、cdk.json の apps の callbackUrls にある', () => {
+    const cdkJson = JSON.parse(fs.readFileSync(new URL('../cdk.json', import.meta.url), 'utf8'));
+    const hosts = new Set(
+      (cdkJson.context.apps as { callbackUrls: string[] }[]).flatMap((a) => a.callbackUrls.map((u) => new URL(u).host)),
+    );
+    for (const app of PORTAL_APPS) expect(hosts).toContain(new URL(app.url).host);
+  });
+
   it('/apps に error 付きで戻ったら表紙へ', () => {
     const res = runRedirect({ uri: '/apps', querystring: { error: { value: 'access_denied' } } });
     expect(res.statusCode).toBe(302);

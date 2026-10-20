@@ -8,15 +8,22 @@ const APPS = [
   { name: 'kakeibo', callbackUrls: ['https://kakeibo.example.com/'], logoutUrls: ['https://kakeibo.example.com/'] },
 ];
 
+/** 合成は重いので、独自ドメインの有無ごとに 1 回だけ行い使い回す（Template は読むだけ） */
+const templates = new Map<CustomAuthDomain | undefined, Template>();
 function template(customDomain?: CustomAuthDomain) {
-  const app = new cdk.App();
-  const stack = new IdentityStack(app, 'test-identity', {
-    apps: APPS,
-    cognitoDomainPrefix: 'test-prefix',
-    customDomain,
-    env: { account: '123456789012', region: 'ap-northeast-1' },
-  });
-  return Template.fromStack(stack);
+  let cached = templates.get(customDomain);
+  if (!cached) {
+    const app = new cdk.App();
+    const stack = new IdentityStack(app, 'test-identity', {
+      apps: APPS,
+      cognitoDomainPrefix: 'test-prefix',
+      customDomain,
+      env: { account: '123456789012', region: 'ap-northeast-1' },
+    });
+    cached = Template.fromStack(stack);
+    templates.set(customDomain, cached);
+  }
+  return cached;
 }
 
 const CUSTOM: CustomAuthDomain = {
