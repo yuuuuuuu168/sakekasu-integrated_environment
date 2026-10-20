@@ -1,6 +1,8 @@
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { createHmac } from 'node:crypto';
-import { appForAlarm, UNKNOWN_APP } from '../slack-notifier/app-label';
+import { appForAlarm, PLATFORM_APP, UNKNOWN_APP } from '../shared/app-label';
+import { cachedSecureParameter } from '../shared/ssm';
+import { parseSnsMessage, type AlarmMessage, type HealthEvent, type SnsEvent } from '../shared/sns';
+import { clipText } from '../shared/text';
 
 /*
  * 4 アプリ共通のアラートを AWS DevOps Agent の Webhook へ転送し、調査を自動で始めさせる。
@@ -11,8 +13,6 @@ import { appForAlarm, UNKNOWN_APP } from '../slack-notifier/app-label';
  *     ssm:GetParameter だけを許しているため
  *   - どのアプリのアラームかをアラーム名の接頭辞から引き（slack-notifier と同じ表）、本文とサービス名に出す
  */
-
-const ssmClient = new SSMClient({});
 
 /** Webhook の URL と署名鍵を JSON で入れた SSM パラメータ（SecureString）の名前 */
 const WEBHOOK_PARAMETER_NAME = process.env.WEBHOOK_PARAMETER_NAME!;
@@ -29,15 +29,6 @@ const PLATFORM_SERVICE_NAME = 'sakekasu-integrated';
 
 /** Webhook は1回の呼び出しで返ってこなければ諦める（SNS 側が再試行する） */
 const REQUEST_TIMEOUT_MS = 10_000;
-
-/**
- * SSM から読んだ設定を使い回す時間。
- *
- * 署名鍵を入れ替えたとき、温まった実行環境が古い鍵で署名し続けると
- * 転送だけが静かに落ちる。呼び出しのたびに取りに行くほどでもないので、
- * 短い期限を付けて放っておいても入れ替わるようにする
- */
-const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * 調査依頼の本文に入れる文字数の上限。
@@ -68,56 +59,6 @@ const ALLOWED_WEBHOOK_HOST = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*\.api\.a
 
 /** 調査の優先度。DevOps Agent の Webhook スキーマで決まっている値 */
 type Priority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'MINIMAL';
-
-interface SnsEventRecord {
-  Sns: {
-    Subject?: string | null;
-    Message: string;
-    Timestamp: string;
-  };
-}
-
-export interface SnsEvent {
-  Records: SnsEventRecord[];
-}
-
-/** CloudWatch アラームが SNS に流す本文（使う項目だけ） */
-interface AlarmMessage {
-  AlarmName?: string;
-  AlarmDescription?: string | null;
-  NewStateValue?: string;
-  OldStateValue?: string;
-  NewStateReason?: string;
-  StateChangeTime?: string;
-  Region?: string;
-  AWSAccountId?: string;
-  Trigger?: {
-    MetricName?: string;
-    Namespace?: string;
-    Threshold?: number;
-    ComparisonOperator?: string;
-    EvaluationPeriods?: number;
-    Period?: number;
-  };
-}
-
-/** AWS Health が EventBridge に流すイベント（使う項目だけ） */
-interface HealthEvent {
-  source?: string;
-  region?: string;
-  time?: string;
-  detail?: {
-    service?: string;
-    eventArn?: string;
-    eventTypeCode?: string;
-    eventTypeCategory?: string;
-    /** 障害が起きているリージョン。イベントが配信されたリージョンとは別物 */
-    eventRegion?: string;
-    startTime?: string;
-    eventDescription?: { latestDescription?: string }[];
-    affectedEntities?: { entityValue?: string }[];
-  };
-}
 
 /** DevOps Agent の Webhook が受け取る本文 */
 export interface IncidentPayload {
@@ -179,10 +120,11 @@ export function buildIncidentId(parts: (string | undefined)[]): string {
 }
 
 /**
- * 長すぎる自由記述を切り詰める。切ったことが読み手に分かるようにしておく。
+ * 長すぎる自由記述を、省略の印を含めて max 文字に切り詰める。切ったことが読み手に分かるようにしておく。
+ * 絵文字の途中では切らない（壊れた片割れが本文に入ると Webhook に拒否される）
  */
 export function clip(value: string, max: number): string {
-  return value.length <= max ? value : `${value.slice(0, max)}…（以下省略）`;
+  return clipText(value, max, '…（以下省略）');
 }
 
 /**
@@ -200,18 +142,6 @@ export function toIsoTimestamp(value: string | undefined | null): string | undef
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
-function isHealthEvent(value: unknown): value is HealthEvent {
-  return (
-    typeof value === 'object' && value !== null && (value as HealthEvent).source === 'aws.health'
-  );
-}
-
-function isAlarmMessage(value: unknown): value is AlarmMessage {
-  return (
-    typeof value === 'object' && value !== null && typeof (value as AlarmMessage).AlarmName === 'string'
-  );
-}
-
 /**
  * 調査の対象サービス名。DevOps Agent 側の一覧に出る。
  *
@@ -219,13 +149,13 @@ function isAlarmMessage(value: unknown): value is AlarmMessage {
  * 一致するので、移す前の調査と同じ並びに出る
  */
 export function serviceForApp(app: string): string {
-  if (app === '共通基盤' || app === UNKNOWN_APP) return PLATFORM_SERVICE_NAME;
+  if (app === PLATFORM_APP || app === UNKNOWN_APP) return PLATFORM_SERVICE_NAME;
   return `sakekasu-${app}`;
 }
 
 /** アラームから調査依頼を組み立てる。 */
 function fromAlarm(alarm: AlarmMessage, snsTimestamp: string): IncidentPayload | null {
-  const alarmName = alarm.AlarmName!;
+  const alarmName = alarm.AlarmName;
 
   // 復旧（OK）とデータ不足では調査しない。エージェントは秒課金のため、
   // 「壊れている間」だけに絞る
@@ -329,15 +259,9 @@ export function buildIncident(
   message: string,
   snsTimestamp: string,
 ): IncidentPayload | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(message);
-  } catch {
-    return null;
-  }
-
-  if (isHealthEvent(parsed)) return fromHealthEvent(parsed, snsTimestamp);
-  if (isAlarmMessage(parsed)) return fromAlarm(parsed, snsTimestamp);
+  const parsed = parseSnsMessage(message);
+  if (parsed.kind === 'health') return fromHealthEvent(parsed.event, snsTimestamp);
+  if (parsed.kind === 'alarm') return fromAlarm(parsed.alarm, snsTimestamp);
   return null;
 }
 
@@ -345,12 +269,6 @@ interface WebhookConfig {
   webhookUrl: string;
   signingSecret: string;
 }
-
-/**
- * 実行環境が生きている間は使い回す（発報のたびに SSM を叩かない）。
- * 鍵を入れ替えたあとも古い値で署名し続けないよう、期限を持たせている
- */
-let cachedConfig: { value: WebhookConfig; expiresAt: number } | null = null;
 
 /**
  * Webhook の URL が https であることを確かめる。
@@ -384,17 +302,8 @@ export function assertHttpsUrl(raw: string): string {
   return raw;
 }
 
-async function getWebhookConfig(): Promise<WebhookConfig> {
-  if (cachedConfig && cachedConfig.expiresAt > Date.now()) return cachedConfig.value;
-
-  const result = await ssmClient.send(
-    new GetParameterCommand({ Name: WEBHOOK_PARAMETER_NAME, WithDecryption: true }),
-  );
-  const raw = result.Parameter?.Value;
-  if (!raw) {
-    throw new Error(`Webhook の設定が未登録です: ${WEBHOOK_PARAMETER_NAME}`);
-  }
-
+/** SSM の値（JSON）を読んで確かめる */
+function parseWebhookConfig(raw: string): WebhookConfig {
   let parsed: Partial<WebhookConfig>;
   try {
     parsed = JSON.parse(raw) as Partial<WebhookConfig>;
@@ -410,13 +319,14 @@ async function getWebhookConfig(): Promise<WebhookConfig> {
     );
   }
 
-  const value: WebhookConfig = {
+  return {
     webhookUrl: assertHttpsUrl(parsed.webhookUrl),
     signingSecret: parsed.signingSecret,
   };
-  cachedConfig = { value, expiresAt: Date.now() + CONFIG_CACHE_TTL_MS };
-  return value;
 }
+
+/** 読んだ設定は期限付きで使い回す（発報のたびに SSM を叩かず、鍵の入れ替えにも追いつく） */
+const getWebhookConfig = cachedSecureParameter(WEBHOOK_PARAMETER_NAME, parseWebhookConfig);
 
 /**
  * HMAC 署名を作る。署名の対象は「タイムスタンプ:本文」で、

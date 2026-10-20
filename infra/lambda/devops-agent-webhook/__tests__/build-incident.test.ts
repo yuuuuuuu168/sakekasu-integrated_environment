@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import type { IncidentPayload } from '../index';
 
 /**
  * SNS のアラームを DevOps Agent の調査依頼に組み立てる部分を検証する。
@@ -27,18 +28,6 @@ vi.mock('@aws-sdk/client-ssm', () => ({
 }));
 
 const SNS_TIMESTAMP = '2026-08-09T03:00:00.000Z';
-
-interface IncidentPayload {
-  eventType: string;
-  incidentId: string;
-  action: string;
-  priority: string;
-  title: string;
-  description: string;
-  timestamp: string;
-  service: string;
-  data: Record<string, unknown>;
-}
 
 let mod: typeof import('../index');
 /** ハンドラに1件流し、Webhook へ送られた本文とヘッダーを取り出す（送らなければ null） */
@@ -377,9 +366,16 @@ describe('Webhook が失敗したとき', () => {
 });
 
 describe('本文の長さ', () => {
-  it('長すぎる自由記述は切って、切ったことを残す', () => {
+  it('長すぎる自由記述は、省略の印を含めて上限に収める', () => {
     expect(mod.clip('あ'.repeat(10), 10)).toBe('あ'.repeat(10));
-    expect(mod.clip('あ'.repeat(11), 10)).toBe(`${'あ'.repeat(10)}…（以下省略）`);
+    expect(mod.clip('あ'.repeat(20), 10)).toBe(`${'あ'.repeat(3)}…（以下省略）`);
+  });
+
+  // 片割れのサロゲートが本文に入ると、JSON が不正になって Webhook に拒否される
+  it('絵文字の途中では切らない', () => {
+    const clipped = mod.clip('🚨'.repeat(10), 10);
+    expect(clipped).toBe('🚨…（以下省略）');
+    expect(() => encodeURIComponent(clipped)).not.toThrow();
   });
 
   it('アラームの説明文が長くても本文が際限なく膨らまない', async () => {

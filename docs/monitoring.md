@@ -87,8 +87,7 @@ aws ssm put-parameter \
 カスタマー管理キーに変えるときは、Lambda のロールと境界（`infra/lib/role-boundary.ts`）に `kms:Decrypt` を足す。
 
 登録する前にデプロイしても壊れはしないが、通知が届くたびに Slack 通知 Lambda が落ちる。
-先に登録しておく。URL を差し替えたときは、Lambda が値を覚えているので、しばらく前の URL に送り続ける
-（実行環境が入れ替わるまで。気になるなら関数の設定を何か変えて入れ替える）。
+先に登録しておく。URL を差し替えたときは、Lambda が値を 5 分まで覚えているので、その間は前の URL に送り続ける。
 
 ## 各アプリからアラームを送る
 
@@ -103,7 +102,7 @@ arn:aws:sns:ap-northeast-1:<アカウント ID>:sakekasu-integrated-alerts
 
 1. **ALARM と OK の両方を送る。** 復旧の通知が無いと、直ったかどうかが Slack だけでは分からない
 2. **アラーム名をアプリの接頭辞で始める。** Slack の見出しに出すアプリ名は、アラーム名の接頭辞から引いている
-   （`infra/lambda/slack-notifier/app-label.ts`）。当たらないと「不明なアプリ」と出る
+   （`infra/lambda/shared/app-label.ts`）。当たらないと「不明なアプリ」と出る
 3. **アラームは ap-northeast-1 に置く。** トピックがあるリージョン。us-east-1 のアラーム（CloudFront の指標など）
    から送れるかは確かめていない
 
@@ -118,7 +117,7 @@ arn:aws:sns:ap-northeast-1:<アカウント ID>:sakekasu-integrated-alerts
 新しいアラームは `sakekasu-<アプリ>-<env>-` で始める（sakekasu-template の `docs/aws-infra-rules.md` の「名前とタグ」）。
 旧い接頭辞は、名前を変えずに残したアラームのために残している。
 照合は長い接頭辞から順に行う（`dev-sakekasu-learning-` は `dev-sakekasu-` より先に当たる）。
-アプリを足したら、`app-label.ts` とこの表に足す。
+アプリを足したら、`infra/lambda/shared/app-label.ts` とこの表に足す。
 
 ### treatMissingData の考え方
 

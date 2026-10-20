@@ -1,3 +1,8 @@
+import { PREFIX } from '../../lib/names';
+
+/** 共通基盤（このリポジトリ）のアラームの表示 */
+export const PLATFORM_APP = '共通基盤';
+
 /**
  * アラーム名の接頭辞から、どのアプリのアラームかを引く対応表。
  *
@@ -11,7 +16,7 @@
  * アプリを足したら、ここと docs/monitoring.md の表に足す。
  */
 export const APP_PREFIXES: ReadonlyArray<{ prefix: string; app: string }> = [
-  { prefix: 'sakekasu-integrated-', app: '共通基盤' },
+  { prefix: `${PREFIX}-`, app: PLATFORM_APP },
   // kakeibo: リソース名・スタック名とも sakekasu-kakeibo-{env}-*
   { prefix: 'sakekasu-kakeibo-', app: 'kakeibo' },
   // learning: sakekasu-learning-{env}-*。2026-10 より前のアラームは {env}-sakekasu-learning-*
