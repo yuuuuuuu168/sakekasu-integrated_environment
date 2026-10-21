@@ -104,6 +104,61 @@ test('資格情報を返す操作は接頭辞が読み取りでも止める', ()
   allows('aws sts get-caller-identity'); // 素性を見るだけ
 });
 
+test('資格情報やトークンを返す操作は止める', () => {
+  denies('aws ec2 get-password-data --instance-id i-1');
+  denies('aws redshift get-cluster-credentials --db-user x --cluster-identifier y');
+  denies('aws redshift-serverless get-credentials --workgroup-name x');
+  denies('aws redshift get-identity-center-auth-token --cluster-identifier c');
+  denies('aws redshift-serverless get-identity-center-auth-token --workgroup-names x');
+  denies('aws lightsail get-instance-access-details --instance-name x');
+  denies('aws secretsmanager get-secret-value --secret-id x');
+  denies('aws lakeformation get-temporary-glue-table-credentials --table-arn x');
+  allows('aws ec2 describe-instances');
+  allows('aws secretsmanager list-secrets');
+});
+
+test('グローバルオプションを途中までの綴りで書いても値を読み飛ばす', () => {
+  denies('aws --prof verify ec2 terminate-instances --instance-ids i-1');
+  denies('aws --prof Verify ec2 terminate-instances --instance-ids i-1');
+  denies('aws --endpoint https://ec2.ap-northeast-1.amazonaws.com ec2 terminate-instances');
+  denies('aws --reg ap-northeast-1 s3 rm s3://bucket/key');
+  denies('aws --profile=verify s3 rm s3://bucket/key');
+  allows('aws --prof verify logs tail /aws/lambda/x');
+  allows('aws --reg ap-northeast-1 --out json sts get-caller-identity');
+});
+
+test('知らないオプションの値らしき語のあとも見る', () => {
+  denies('aws --debug Verify ec2 terminate-instances --instance-ids i-1');
+  allows('aws --debug sts get-caller-identity');
+});
+
+test('シェルに文字列で渡したコマンドの中も見る', () => {
+  denies('bash -c "aws s3 rm s3://bucket/key"');
+  denies("sh -c 'aws s3 rm s3://bucket/key'");
+  denies('bash -ec "aws s3 rm s3://bucket/key"');
+  denies('bash -o pipefail -c "aws s3 rm s3://bucket/key"');
+  denies('bash --rcfile foo -c "aws s3 rm s3://bucket/key"');
+  denies('bash --init-file foo -c "aws s3 rm s3://bucket/key"');
+  denies('bash -O extglob -c "aws s3 rm s3://bucket/key"');
+  denies('zsh -f -c "aws s3 rm s3://bucket/key"');
+  denies('bash --rcfile -ce -c "aws s3 rm s3://bucket/key"');
+  denies('bash -O -c -c "aws s3 rm s3://bucket/key"');
+  denies('bash -c "echo ok" -c "aws s3 rm s3://bucket/key"');
+  denies('bash --rcfile "|" -c "aws s3 rm s3://bucket/key"');
+  denies("bash --rcfile ';' -c 'aws s3 rm s3://bucket/key'");
+  denies('bash -O "&&" -c "aws s3 rm s3://bucket/key"');
+  denies('/bin/bash -lc "echo x; aws s3 rm s3://bucket/key"');
+  denies('timeout 30 bash -c "aws s3 rm s3://bucket/key"');
+  denies('eval "aws s3 rm s3://bucket/key"');
+  denies('true && eval \'aws s3 rm\' s3://bucket/key');
+  denies('bash -c "bash -c \\"aws s3 rm s3://bucket/key\\""');
+  allows('bash -c "aws logs tail /aws/lambda/x"');
+  allows('eval "$(ssh-agent -s)"');
+  allows('bash scripts/run.sh -c config.yml');
+  allows('bash --rcfile foo -c "npm test"');
+  allows('grep -rn eval "it\'s" scripts/');
+});
+
 test('s3 の高レベルコマンドは ls だけを通す', () => {
   denies('aws s3 cp local.txt s3://bucket/');
   denies('aws s3 sync . s3://bucket/');
@@ -328,6 +383,35 @@ test('変数展開でサービス名を隠しても止める', () => {
   denies('aws ${SERVICE} delete-object --bucket x --key y');
 });
 
+// bash はブレース展開とグロブを展開してから aws に渡す。`{s3,}` は s3 に、`s?` や `s[3]` は
+// カレントに s3 というファイルがあればそれに化ける（Issue sakekasu-template#36）
+test('ブレース展開やグロブでサービス名を隠しても止める', () => {
+  denies('aws {s3,} mv a s3://b');
+  denies('aws {,s3} rm s3://b');
+  denies('aws s[3] mv a s3://b');
+  denies('aws s? rm s3://b');
+  denies('aws s* rm s3://b');
+  denies('aws ?? rm s3://b');
+  // 値を取らないオプションの直後でも、知らない値として読み飛ばさない
+  denies('aws --no-paginate s? rm s3://b');
+  denies('aws --region us-east-1 s? rm s3://b');
+});
+
+test('操作名の位置のブレース展開やグロブも止める', () => {
+  denies('aws s3 r? s3://b');
+  denies('aws s3 {rm,} s3://b');
+  denies('aws s3 [r]m s3://b');
+});
+
+test('引数の中のグロブや波かっこは誤検知しない', () => {
+  allows('aws s3 ls s3://b/*');
+  allows('aws s3 ls "s3://b/{x}"');
+  allows('aws s3api get-object --bucket b --key "a*" out');
+  allows("aws logs filter-log-events --log-group-name g --filter-pattern '{ $.level = \"ERROR\" }'");
+  // 日本語の散文の記号は名前の候補にならない
+  allows('echo クラウドには aws は？ 入っていない');
+});
+
 // ここから下は誤検知側。散文やパスを呼び出しと読み違えないこと
 test('散文に混じった aws は呼び出しと見なさない', () => {
   allows('git commit -m "aws の導入手順を書き直す"');
@@ -345,6 +429,8 @@ test('aws を含む無関係なコマンドは通す', () => {
 });
 
 test('引用符で囲った引数の中の区切り文字は区切りにしない', () => {
+  denies('aws --profile ";" s3 rm s3://bucket/key');
+  denies('eval ";" aws s3 rm s3://bucket/key');
   allows('aws logs filter-log-events --filter-pattern "a;b" --log-group-name x');
 });
 
