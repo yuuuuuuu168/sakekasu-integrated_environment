@@ -25,8 +25,9 @@ describe('App タグ', () => {
   });
 
   // ロールのプロパティを変えると、実物の名前が cdkd の導く名前と違うときに作り直しになる
-  // （docs/aws-infra-rules.md の 2 節と 7 節）
-  it('IAM ロールには付けない', () => {
+  // （docs/aws-infra-rules.md の 2 節と 7 節）。見るのはテンプレートの中だけで、CloudFormation で
+  // 入れるスタックではスタックのタグを通して付く（lib/app-tag.ts）
+  it('テンプレートの中の IAM ロールには付けない', () => {
     expect((tagsOf('AWS::IAM::Role') ?? []).map((t) => t.Key)).not.toContain('App');
   });
 });
