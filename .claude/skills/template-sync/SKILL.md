@@ -53,7 +53,7 @@ sakekasu-template の変更を、このリポジトリに取り込む。ファ�
 5. **確かめる。**
 
    ```sh
-   node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs
+   node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs
    python3 scripts/japanese-guard/test_japanese_guard.py
    for f in scripts/*.sh; do bash -n "$f"; done
    node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8'))"

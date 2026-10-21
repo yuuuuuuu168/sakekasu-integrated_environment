@@ -35,7 +35,8 @@ PR を作成したら、ユーザーの指示を待たずにそのまま `subscr
 - watch はマージまたはクローズまで続ける。止めるのはユーザーに言われたときだけ
 
 PR 作成の直後には [scripts/pr-watch-reminder.mjs](scripts/pr-watch-reminder.mjs)（`PostToolUse`
-フック）が PR 番号つきで watch を促す。長いセッションでこの節が押し流されても効く。
+フック）が PR 番号つきで watch を促す（GitHub の MCP ツールでも `gh pr create` でも）。
+長いセッションでこの節が押し流されても効く。
 
 ## 応答の言語
 
