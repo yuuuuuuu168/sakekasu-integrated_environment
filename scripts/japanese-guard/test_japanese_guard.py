@@ -1,6 +1,7 @@
 """python3 scripts/japanese-guard/test_japanese_guard.py で実行する"""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -29,9 +30,18 @@ def run(entries, stop_hook_active=False):
     with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
         for e in entries:
             f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    payload = json.dumps({"transcript_path": f.name, "stop_hook_active": stop_hook_active})
-    out = subprocess.run([sys.executable, str(HOOK)], input=payload, capture_output=True, text=True, check=True)
-    return json.loads(out.stdout) if out.stdout.strip() else None
+    try:
+        payload = json.dumps({"transcript_path": f.name, "stop_hook_active": stop_hook_active})
+        out = subprocess.run([sys.executable, str(HOOK)], input=payload, capture_output=True, text=True, check=True)
+        return json.loads(out.stdout) if out.stdout.strip() else None
+    finally:
+        os.unlink(f.name)
+
+
+def run_raw(stdin):
+    """壊れた入力を渡す。何も出さず 0 で終わること"""
+    out = subprocess.run([sys.executable, str(HOOK)], input=stdin, capture_output=True, text=True)
+    return out.returncode == 0 and not out.stdout.strip()
 
 
 EN = "The build finished successfully and all tests passed, so I will publish the page now."
@@ -50,6 +60,10 @@ cases = [
     ("前のターンの英語は対象外", [user("a"), assistant(EN), user("b"), assistant(JA)], False, False),
     ("2回目は通す（無限ループ防止）", [user("公開して"), assistant(EN)], True, False),
     ("短い英語は見逃す", [user("いい？"), assistant("OK, done.")], False, False),
+    # 長音記号と踊り字を日本語として数える。数えないと、この文は英語主体と判定される
+    ("カタカナ語の長音記号と踊り字も日本語として数える", [user("どう？"), assistant(
+        "ユーザーのサーバーのモニターの設定々を見直す。deploy config log output check again soon with extra care today")],
+        False, False),
 ]
 
 failed = 0
@@ -57,6 +71,11 @@ for name, entries, active, expect_block in cases:
     result = run(entries, active)
     blocked = bool(result and result.get("decision") == "block")
     ok = blocked == expect_block
+    failed += not ok
+    print(("✓ " if ok else "✗ ") + name)
+for name, stdin in [("壊れた JSON の入力でも落ちない", "{ これは JSON ではない"), ("空の入力でも落ちない", ""),
+                    ("JSON でもオブジェクトでなければ何もしない", "[1, 2]")]:
+    ok = run_raw(stdin)
     failed += not ok
     print(("✓ " if ok else "✗ ") + name)
 sys.exit(1 if failed else 0)

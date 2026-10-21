@@ -23,7 +23,8 @@ MIN_LATIN = int(os.environ.get("JAPANESE_GUARD_MIN_LATIN", "25"))
 # 英字の数が日本語の文字数のこの倍を超えたら、英語主体とみなす
 RATIO = float(os.environ.get("JAPANESE_GUARD_RATIO", "3"))
 
-JA = re.compile(r"[ぁ-んァ-ヶ一-龥]")
+# 長音記号（ー）と踊り字（々）も数える。数えないとカタカナ語の多い文が英語主体に寄る
+JA = re.compile(r"[ぁ-んァ-ヶー一-龥々]")
 LATIN = re.compile(r"[A-Za-z]")
 IGNORE = [
     re.compile(r"```.*?```", re.S),
@@ -95,8 +96,12 @@ def main():
         hits = english_passages(sys.argv[2])
         print("\n".join(hits) if hits else "英語主体の本文はありません")
         return
-    data = json.load(sys.stdin)
-    if data.get("stop_hook_active"):
+    # 入力が壊れていても終了は止めない（ほかのフックと同じく、判断できなければ何もしない）
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    if not isinstance(data, dict) or data.get("stop_hook_active"):
         return
     path = data.get("transcript_path")
     if not path:

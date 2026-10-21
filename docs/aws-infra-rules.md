@@ -52,7 +52,11 @@ sakekasu の 5 リポジトリ（reinvent、builder、kakeibo、learning、integ
   「他のアプリのリソースに触れない」の判定に使う
 - **IAM ロールには App タグを付けない**（`excludeResourceTypes: ['AWS::IAM::Role']`）。CloudFormation から
   cdkd へ移したロールは物理名が CloudFormation の命名のままで、プロパティを変えると作り直しになる
-  （「6. cdkd の落とし穴」）。2026-10-04 にタグを足しただけで作り直しが起き、Lambda が消えたロールを指して止まった
+  （「7. cdkd の落とし穴」）。2026-10-04 にタグを足しただけで作り直しが起き、Lambda が消えたロールを指して止まった
+  - 外せるのは cdkd で入れるスタックのロールだけ。CloudFormation で入れるスタック（GitHub Actions のロールなど）
+    では、CDK がアプリのタグをスタックのタグとしても渡し、CloudFormation がそれを中の全リソースに付けるので、
+    ロールにも付く（`excludeResourceTypes` はテンプレートの中にしか効かない）。CloudFormation ではタグの変更で
+    ロールは作り直されないので、そのままでよい（2026-10-20 に integrated のデプロイで確かめた）
 - IAM ロールの description は ASCII だけにする。日本語を入れるとデプロイが 400 で落ちる
 
 ## 3. スタックのつなぎ方
@@ -162,7 +166,7 @@ builder と integrated は管理ポリシー、ほかはインラインポリシ
   - `DenyRoleWritesWithoutBoundary`：`CreateRole`、`PutRolePolicy`、`AttachRolePolicy`、
     `PutRolePermissionsBoundary` を、`iam:PermissionsBoundary` が境界の ARN でなければ拒否する
   - `DenyRemovingBoundaryAndTrust`：`DeleteRolePermissionsBoundary` と `UpdateAssumeRolePolicy`
-  - `DenyRewritingBoundary`：境界ポリシーの版の作成・削除・切り替えと、ポリシーの削除
+  - `DenyRewritingBoundary`：境界ポリシーの版の作成・削除・切り替え、ポリシーの削除、タグの付け替え
 - `iam:PermissionsBoundary` を渡すのは `CreateRole`、`PutRolePolicy`、`DeleteRolePolicy`、`AttachRolePolicy`、
   `DetachRolePolicy`、`PutRolePermissionsBoundary`、`DeleteRolePermissionsBoundary` だけ。`TagRole` などに
   条件付きの Deny を付けると、境界が正しくても常に拒否される

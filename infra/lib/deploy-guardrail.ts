@@ -272,7 +272,8 @@ function roleBoundaryGuardStatements(
       actions: ['iam:DeleteRolePermissionsBoundary', 'iam:UpdateAssumeRolePolicy'],
       resources: appRoles,
     }),
-    // 境界そのものは CloudFormation のスタックで入れる。cdkd 用ロールからは書き換えさせない
+    // 境界そのものは CloudFormation のスタックで入れる。cdkd 用ロールからは書き換えさせない。
+    // タグも止める。App タグはガードレールと境界の「他のアプリのリソース」の判定に使う
     new iam.PolicyStatement({
       sid: 'DenyRewritingBoundary',
       effect: iam.Effect.DENY,
@@ -281,6 +282,8 @@ function roleBoundaryGuardStatements(
         'iam:DeletePolicy',
         'iam:DeletePolicyVersion',
         'iam:SetDefaultPolicyVersion',
+        'iam:TagPolicy',
+        'iam:UntagPolicy',
       ],
       resources: [roleBoundaryArn],
     }),
