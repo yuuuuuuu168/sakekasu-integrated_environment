@@ -116,9 +116,15 @@ const DENY_EXACT = new Set([
 // シェルの区切り文字。引用符の外にあるときだけ区切りとして扱う。
 // 語として出すときは先頭に NUL を付け、引用された "|" のような同じ字面の語と
 // 取り違えないようにする。語の側は NUL を含み得ない（INVISIBLE_CHARS で落とす）
+//
+// バッククォートは入れない。コマンド置換として tokenize が区切りより先に読み切る（isSubstitution）
 const sep = (s) => `\0${s}`;
-const SEPARATORS = ['&&', '||', ';', '|', '&', '>', '<', '(', ')', '`'].map(sep);
-const SEPARATOR_CHARS = ';|&<>()`';
+const SEPARATOR_CHARS = ';|&<>()';
+const SEPARATORS = ['&&', '||', ...SEPARATOR_CHARS].map(sep);
+
+// 非 ASCII を落とす。AWS CLI の名前に非 ASCII は入り得ないので、混ぜ物で名前を
+// 割った語も、落とした形で名前として判定する（toCliName の説明を参照）
+const asciiOnly = (word) => word.replace(/[^\x00-\x7f]/g, '');
 
 // 読み切れなかったコマンドを表す。判定できないものは通さず拒否側に倒す
 class UnparsableCommand extends Error {}
@@ -331,7 +337,7 @@ const CLI_NAME = /^[a-z0-9][a-z0-9-]*$/;
 // 止まるのは元々実行できないコマンドだけになる
 function toCliName(word) {
   if (CLI_NAME.test(word)) return word;
-  const ascii = word.replace(/[^\x00-\x7f]/g, '');
+  const ascii = asciiOnly(word);
   return CLI_NAME.test(ascii) ? ascii : '';
 }
 
@@ -341,7 +347,7 @@ function toCliName(word) {
 // 非 ASCII を落として空になる語（日本語の散文の「は？」など）は名前の候補ではないので数えない
 const EXPANSION_CHARS = /[$*?[\]{}]/;
 function isUnpredictable(word) {
-  return EXPANSION_CHARS.test(word) && word.replace(/[^\x00-\x7f]/g, '') !== '';
+  return EXPANSION_CHARS.test(word) && asciiOnly(word) !== '';
 }
 
 // 値を取るグローバルオプションか。AWS CLI は argparse の省略形を受け付けるので、
@@ -412,7 +418,8 @@ function isRead(service, operation) {
   //
   // agent-toolkit も確認作業では使わないので同じ扱いにする
   if (service === 'sso' || service === 'sso-oidc' || service === 'agent-toolkit') return false;
-  if (operation === 'wait' || operation === 'help') return true;
+  // help は parseInvocation が先に通すので、ここには来ない
+  if (operation === 'wait') return true;
   return READ_PREFIXES.some((p) => operation.startsWith(p));
 }
 
@@ -421,7 +428,7 @@ function isRead(service, operation) {
 // 非 ASCII を落とした形でも同じ2つを見る。
 function isAwsCommand(token) {
   if (token === 'aws' || token.endsWith('/aws')) return true;
-  const ascii = token.replace(/[^\x00-\x7f]/g, '');
+  const ascii = asciiOnly(token);
   return ascii === 'aws' || ascii.endsWith('/aws');
 }
 
@@ -492,7 +499,10 @@ process.stdin.on('end', () => {
   try {
     command = JSON.parse(raw)?.tool_input?.command ?? '';
   } catch {
-    // 入力を解釈できないときは判定しない（通常の権限フローに任せる）
+    // 入力を解釈できないときは判定しない（通常の権限フローに任せる）。
+    // 「判定できないものは拒否側に倒す」のはコマンドの読み取りの話で、ここは Claude Code が渡す
+    // フックの入力そのものが壊れている場合。拒否しても止まるのは Bash の呼び出しすべてで、
+    // 通常の権限フローに戻せば承認が要る操作はそこで止まる。テストもこの挙動を固定している
     process.exit(0);
   }
 

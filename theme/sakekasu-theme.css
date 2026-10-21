@@ -13,6 +13,11 @@
  *
  * ダークの値は「OS がダーク」と「data-theme="dark"」の 2 か所に同じものを書いている。
  * 片方だけ直すとずれるので、theme/sakekasu-theme.test.mjs が一致を確かめる。
+ *
+ * 色は 16 進 6 桁で直接書く。light-dark() で 1 か所にまとめたり、--sk-accent を var(--sk-indigo)
+ * にしたりはしない。sakekasu-integrated_environment がこのファイルを読み、:root と
+ * :root[data-theme='dark'] の 16 進の値から共通ログイン画面と入口のページの色を作っている
+ * （infra/lib/theme.ts）。書き方を変えるなら、そちらの読み取りとこのファイルのテストも一緒に直す
  */
 
 :root {
