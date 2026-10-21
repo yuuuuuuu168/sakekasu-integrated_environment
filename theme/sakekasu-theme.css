@@ -10,18 +10,20 @@
  *   - Tailwind v4 のアプリは @theme inline で --sk-* を自分の色名に割り当てる
  *   - ライト/ダークは OS の設定に従う。アプリで切り替えるときは <html> に
  *     data-theme="light" か data-theme="dark" を付ける（クラスでは切り替えない）
+ *   - 画面の一部だけをダークにするときは、その要素に color-scheme: dark を付ける。
+ *     --sk-* の値を書き写して上書きしなくてよい
  *
- * ダークの値は「OS がダーク」と「data-theme="dark"」の 2 か所に同じものを書いている。
- * 片方だけ直すとずれるので、theme/sakekasu-theme.test.mjs が一致を確かめる。
- *
- * 色は 16 進 6 桁で直接書く。light-dark() で 1 か所にまとめたり、--sk-accent を var(--sk-indigo)
- * にしたりはしない。sakekasu-integrated_environment がこのファイルを読み、:root と
- * :root[data-theme='dark'] の 16 進の値から共通ログイン画面と入口のページの色を作っている
- * （infra/lib/theme.ts）。書き方を変えるなら、そちらの読み取りとこのファイルのテストも一緒に直す
+ * 書き方
+ *   - 色は :root の 1 か所に light-dark(ライト, ダーク) で書く。どちらになるかは、変数を使う要素の
+ *     color-scheme で決まる（:root で決まるのではない）。data-theme はその color-scheme を切り替えるだけ
+ *   - ブランドの色と同じ値は var(--sk-indigo) などで引く。それ以外は 16 進 6 桁で書く
+ *   - 使ってよいのは 16 進 6 桁、var(--sk-*)、light-dark() の 3 つだけ。theme/sakekasu-theme.test.mjs と、
+ *     sakekasu-integrated_environment の infra/lib/theme.ts（共通ログイン画面と入口のページの色を
+ *     このファイルから作る）がこの 3 つを解いて 16 進の色にする。ほかの書き方を足すなら、両方の読み取りも直す
  */
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 
   --sk-font-sans: 'Inter', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', system-ui,
     -apple-system, 'Segoe UI', sans-serif;
@@ -34,89 +36,41 @@
   --sk-dark-gold: #d4af37;
 
   /* 地と面 */
-  --sk-bg: #f7f5f0;
-  --sk-surface: #fdfcf9;
-  --sk-surface-2: #efebe2;
-  --sk-border: #ddd7ca;
+  --sk-bg: light-dark(#f7f5f0, var(--sk-night));
+  --sk-surface: light-dark(#fdfcf9, #22223a);
+  --sk-surface-2: light-dark(#efebe2, #2b2b46);
+  --sk-border: light-dark(#ddd7ca, #3a3a58);
 
   /* 文字 */
-  --sk-ink: #1c1c1c;
-  --sk-ink-2: #45433e;
-  --sk-muted: #6b6860;
+  --sk-ink: light-dark(#1c1c1c, #f2efe8);
+  --sk-ink-2: light-dark(#45433e, #cfcabe);
+  --sk-muted: light-dark(#6b6860, #9a97ab);
 
   /* アクセント（リンク、主ボタン、選択中） */
-  --sk-accent: #1b365d;
-  --sk-accent-hover: #142a49;
-  --sk-accent-ink: #ffffff;
-  --sk-accent-weak: #e2e8f1;
+  --sk-accent: light-dark(var(--sk-indigo), var(--sk-dark-gold));
+  --sk-accent-hover: light-dark(#142a49, #e2c463);
+  --sk-accent-ink: light-dark(#ffffff, var(--sk-night));
+  --sk-accent-weak: light-dark(#e2e8f1, #3a3424);
 
   /* 差し色（罫線、見出しの下線、バッジの縁など。文字には --sk-gold-ink を使う） */
-  --sk-gold-line: #c5a572;
-  --sk-gold-ink: #7d6232;
+  --sk-gold-line: light-dark(var(--sk-gold), #b8964f);
+  --sk-gold-ink: light-dark(#7d6232, var(--sk-dark-gold));
 
   /* 金は生成りの地では枠が見えにくい（2.1:1）ので、ライトのフォーカスは藍にする */
-  --sk-focus: #1b365d;
+  --sk-focus: light-dark(var(--sk-indigo), var(--sk-dark-gold));
 
   /* 状態 */
-  --sk-success: #2f6b3a;
-  --sk-warning: #8a5a00;
-  --sk-danger: #a8322d;
+  --sk-success: light-dark(#2f6b3a, #7cc48a);
+  --sk-warning: light-dark(#8a5a00, #e8b24a);
+  --sk-danger: light-dark(#a8322d, #ef8a82);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    color-scheme: dark;
-
-    --sk-bg: #1a1a2e;
-    --sk-surface: #22223a;
-    --sk-surface-2: #2b2b46;
-    --sk-border: #3a3a58;
-
-    --sk-ink: #f2efe8;
-    --sk-ink-2: #cfcabe;
-    --sk-muted: #9a97ab;
-
-    --sk-accent: #d4af37;
-    --sk-accent-hover: #e2c463;
-    --sk-accent-ink: #1a1a2e;
-    --sk-accent-weak: #3a3424;
-
-    --sk-gold-line: #b8964f;
-    --sk-gold-ink: #d4af37;
-
-    --sk-focus: #d4af37;
-
-    --sk-success: #7cc48a;
-    --sk-warning: #e8b24a;
-    --sk-danger: #ef8a82;
-  }
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-
-  --sk-bg: #1a1a2e;
-  --sk-surface: #22223a;
-  --sk-surface-2: #2b2b46;
-  --sk-border: #3a3a58;
-
-  --sk-ink: #f2efe8;
-  --sk-ink-2: #cfcabe;
-  --sk-muted: #9a97ab;
-
-  --sk-accent: #d4af37;
-  --sk-accent-hover: #e2c463;
-  --sk-accent-ink: #1a1a2e;
-  --sk-accent-weak: #3a3424;
-
-  --sk-gold-line: #b8964f;
-  --sk-gold-ink: #d4af37;
-
-  --sk-focus: #d4af37;
-
-  --sk-success: #7cc48a;
-  --sk-warning: #e8b24a;
-  --sk-danger: #ef8a82;
 }
 
 /*

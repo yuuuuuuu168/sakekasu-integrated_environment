@@ -16,24 +16,64 @@ export interface Theme {
   dark: ThemeColors;
 }
 
-/** CSS の中から `selector { ... }` の中身を取り出し、--sk-* の色だけを表にする */
-function readBlock(css: string, selector: string): ThemeColors {
-  const start = css.indexOf(`${selector} {`);
-  if (start === -1) throw new Error(`共通テーマに ${selector} のブロックが無い`);
-  const open = css.indexOf('{', start);
-  const close = css.indexOf('}', open);
-  const colors: ThemeColors = {};
-  for (const [, name, value] of css.slice(open + 1, close).matchAll(/--sk-([\w-]+)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g)) {
-    colors[name] = value.slice(1).toLowerCase();
+/**
+ * 共通テーマの :root に書いた --sk-* の宣言を表にする（--sk- を外した名前 → 書いたままの値）。
+ * 色はここに light-dark(ライト, ダーク) で 1 か所だけ書いてある（theme/sakekasu-theme.css の冒頭）
+ */
+function readRoot(css: string): Record<string, string> {
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const start = body.indexOf(':root {');
+  if (start === -1) throw new Error('共通テーマに :root のブロックが無い');
+  const open = body.indexOf('{', start);
+  const declared: Record<string, string> = {};
+  for (const [, name, value] of body.slice(open + 1, body.indexOf('}', open)).matchAll(/--sk-([\w-]+)\s*:\s*([^;]+);/g)) {
+    declared[name] = value.replace(/\s+/g, ' ').trim();
   }
-  return colors;
+  return declared;
 }
 
-/** 共通テーマのライトとダークの色を読む。ダークはライトの上に上書きする */
+/** light-dark() の引数を、括弧の外のカンマで 2 つに分ける */
+function splitLightDark(args: string): [string, string] {
+  let depth = 0;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '(') depth++;
+    else if (args[i] === ')') depth--;
+    else if (args[i] === ',' && depth === 0) return [args.slice(0, i).trim(), args.slice(i + 1).trim()];
+  }
+  throw new Error(`共通テーマの light-dark() の引数が 2 つではない: ${args}`);
+}
+
+/**
+ * 値を 16 進 6 桁（# なし）に解く。共通テーマが使う書き方は 16 進 6 桁、var(--sk-*)、light-dark() の 3 つ。
+ * 色でない値（フォント）は undefined
+ */
+function resolve(declared: Record<string, string>, value: string, mode: 'light' | 'dark', seen: string[] = []): string | undefined {
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value.slice(1).toLowerCase();
+  const ref = /^var\(--sk-([\w-]+)\)$/.exec(value);
+  if (ref) {
+    const name = ref[1];
+    if (seen.includes(name)) throw new Error(`共通テーマの var() が循環している: --sk-${name}`);
+    const target = declared[name];
+    if (target === undefined) throw new Error(`共通テーマに --sk-${name} が無い`);
+    return resolve(declared, target, mode, [...seen, name]);
+  }
+  const ld = /^light-dark\((.*)\)$/.exec(value);
+  if (ld) return resolve(declared, splitLightDark(ld[1])[mode === 'light' ? 0 : 1], mode, seen);
+  return undefined;
+}
+
+/** 共通テーマのライトとダークの色を読む */
 export function readTheme(css: string): Theme {
-  const light = readBlock(css, ':root');
-  const dark = { ...light, ...readBlock(css, ":root[data-theme='dark']") };
-  return { light, dark };
+  const declared = readRoot(css);
+  const palette = (mode: 'light' | 'dark'): ThemeColors => {
+    const colors: ThemeColors = {};
+    for (const [name, value] of Object.entries(declared)) {
+      const hex = resolve(declared, value, mode);
+      if (hex) colors[name] = hex;
+    }
+    return colors;
+  };
+  return { light: palette('light'), dark: palette('dark') };
 }
 
 /** 共通テーマのファイルを読む */
