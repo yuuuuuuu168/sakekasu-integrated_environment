@@ -36,8 +36,8 @@ jobs:
         run: node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8'))"
       - name: シェルスクリプトの構文
         run: for f in scripts/*.sh; do bash -n "$f"; done
-      - name: deny-aws-writes と template-sync のテスト
-        run: node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs
+      - name: deny-aws-writes・template-sync・pr-watch-reminder のテスト
+        run: node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs
       - name: .template-sync.json が JSON として読める
         run: node -e "JSON.parse(require('fs').readFileSync('.template-sync.json','utf8'))"
       - name: japanese-guard のテスト
