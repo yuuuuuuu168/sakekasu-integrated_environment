@@ -26,7 +26,7 @@ iPhone のブラウザ／Claude アプリからタスクを投げ、「タスク
 - 念押しとして [scripts/pr-watch-reminder.mjs](../scripts/pr-watch-reminder.mjs)（`PostToolUse` フック）を置いている。PR 作成ツールが成功した直後に発火し、`hookSpecificOutput.additionalContext` で PR 番号つきの指示を返す。`PostToolUse` は素の標準出力が Claude に届かない（デバッグログ行き）ので、JSON で返す必要がある
 - 番号は MCP ツールの返り値から拾う。構造化されたオブジェクトのことも、JSON を丸ごと入れた文字列のこともあるため再帰で探し、`html_url` の `/pull/<番号>` を優先する。レビューや issue の入れ子にも `number` があるため
 - 判断材料を足すだけのフックなので、入力が壊れていても異常終了させない（拾えなければ番号なしの文言を返す）
-- `.claude/settings.json` の `permissions.allow` に `mcp__github__subscribe_pr_activity` を入れてあり、watch の開始で承認プロンプトは出ない
+- `.claude/settings.json` の `permissions.allow` に `mcp__claude-code-remote__subscribe_pr_activity` と `unsubscribe_pr_activity` を入れてあり、watch の開始と終了で承認プロンプトは出ない。watch のツールは github の MCP サーバーではなく、クラウドセッションの `claude-code-remote` が持っている
 
 ## MCP サーバー（.mcp.json）
 

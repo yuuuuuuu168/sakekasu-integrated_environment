@@ -67,6 +67,12 @@ needs_setup() {
   return 1
 }
 
+# 背後のログインがまだ生きているか。pgrep が無い環境では判断できないので生きている扱い
+login_running() {
+  command -v pgrep > /dev/null 2>&1 || return 0
+  pgrep -f "aws sso login --profile $profile" > /dev/null 2>&1
+}
+
 wait_for_approval() {
   local limit=$1 waited=0
   while [ "$waited" -lt "$limit" ]; do
@@ -74,6 +80,13 @@ wait_for_approval() {
       echo "AWS SSO: authenticated (profile $profile)."
       aws sts get-caller-identity --profile "$profile" --output text --query 'Arn' 2> /dev/null || true
       return 0
+    fi
+    # ログインが終わっているのに認証できていなければ、待っても変わらない
+    if ! login_running && ! is_authenticated; then
+      echo "AWS SSO: ログインの処理が終わっているが、認証できていない。ログの中身は次のとおり。" >&2
+      tail -20 "$log" >&2 2> /dev/null || true
+      echo "引数なしで再実行して、新しいURLとコードで承認し直す。" >&2
+      return 1
     fi
     sleep 3
     waited=$((waited + 3))
@@ -97,13 +110,16 @@ case "$mode" in
     ;;
 esac
 
+# 設定の書き出しを認証の確認より先に済ませる。認証済みで抜けてしまうと、
+# aws-verify.conf でプロファイルを足しても ~/.aws/config に反映されない。
+# トークンは sso-session 単位で持つので、書き直しても認証は切れない
+if needs_setup; then
+  bash "$script_dir/setup-aws-profile.sh"
+fi
+
 if is_authenticated; then
   echo "AWS SSO: already authenticated (profile $profile). ログイン不要。"
   exit 0
-fi
-
-if needs_setup; then
-  bash "$script_dir/setup-aws-profile.sh"
 fi
 
 # ログには承認用のURLとコードが載る。他人が拾って承認を進めないよう、
