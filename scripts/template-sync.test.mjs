@@ -114,6 +114,59 @@ test('前回の同期のコミットが clone に無ければ、全体の突き�
   assert.match(report.merged[0].diff, /\+# rules/);
 });
 
+// Issue sakekasu-template#38。外したファイルが取り込み先に黙って残らないようにする
+test('前回の同期以降にテンプレートの一覧から外れたファイルを報告し、消さない', () => {
+  const template = makeTemplate();
+  const repo = makeRepo();
+  sync({ repo, template, apply: true });
+
+  write(template, '.template-sync.json', JSON.stringify({
+    template: 'owner/tpl', syncedCommit: null, managed: ['scripts/hook.sh'], merged: ['CLAUDE.md'], exclude: [],
+  }));
+  git(template, 'rm', '-q', 'scripts/other.mjs');
+  git(template, 'commit', '-qam', 'drop other');
+
+  const report = sync({ repo, template, apply: true });
+  assert.deepEqual(report.removed, [{ path: 'scripts/other.mjs', exists: true }]);
+  assert.equal(existsSync(join(repo, 'scripts/other.mjs')), true, '--apply でも消さない');
+
+  // 一度報告したら、次の同期（syncedCommit が進んだあと）では出さない
+  assert.deepEqual(sync({ repo, template, apply: false }).removed, []);
+});
+
+test('managed と merged の間で移っただけのファイルは、外れたと数えない', () => {
+  const template = makeTemplate();
+  const repo = makeRepo();
+  sync({ repo, template, apply: true });
+
+  write(template, '.template-sync.json', JSON.stringify({
+    template: 'owner/tpl', syncedCommit: null, managed: ['scripts/hook.sh'], merged: ['CLAUDE.md', 'scripts/other.mjs'], exclude: [],
+  }));
+  git(template, 'commit', '-qam', 'move other to merged');
+
+  assert.deepEqual(sync({ repo, template, apply: false }).removed, []);
+});
+
+test('前回の同期のコミットが無ければ、外れたファイルは判定しない', () => {
+  const template = makeTemplate();
+  const repo = makeRepo();
+  write(repo, '.template-sync.json', JSON.stringify({ template: 'owner/tpl', syncedCommit: '0'.repeat(40), exclude: [] }));
+  assert.deepEqual(sync({ repo, template, apply: false }).removed, []);
+});
+
+test('managed に無い exclude を報告する', () => {
+  const template = makeTemplate();
+  const repo = makeRepo();
+  write(repo, '.template-sync.json', JSON.stringify({
+    template: 'owner/tpl', syncedCommit: null, exclude: ['scripts/other.mjs', 'scripts/gone.sh'],
+  }));
+  write(repo, 'scripts/other.mjs', '// local\n');
+
+  const report = sync({ repo, template, apply: false });
+  assert.deepEqual(report.staleExclude, ['scripts/gone.sh']);
+  assert.deepEqual(report.excluded, ['scripts/other.mjs']);
+});
+
 test('テンプレートの一覧にあるファイルが無ければ止まる', () => {
   const template = makeTemplate();
   git(template, 'rm', '-q', 'scripts/other.mjs');
