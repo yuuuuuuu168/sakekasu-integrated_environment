@@ -59,9 +59,10 @@ sakekasu-template の変更を、このリポジトリに取り込む。ファ�
 
    ```sh
    node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs
+   node --test theme/sakekasu-theme.test.mjs
    python3 scripts/japanese-guard/test_japanese_guard.py
    for f in scripts/*.sh; do bash -n "$f"; done
-   node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8'))"
+   node -e "for (const f of ['.claude/settings.json', '.mcp.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
    ```
 
    リポジトリの lint やテストがあれば、それも通す。

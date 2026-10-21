@@ -46,7 +46,7 @@ export interface DeployGuardrailProps {
   /**
    * アプリのロールに付ける Permissions Boundary の ARN（role-boundary.ts）。渡すと、
    * 接頭辞の範囲のロールを境界なしで作ったり書き換えたりするのを拒否する。
-   * 境界の条件を cdkd 用ロールの許可の側で持っているアプリ（builder、integrated）は渡さない
+   * 境界の条件を cdkd 用ロールの許可の側で持っているアプリ（builder）は渡さない
    */
   roleBoundaryArn?: string;
 }

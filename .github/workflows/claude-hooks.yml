@@ -1,4 +1,5 @@
-# Claude Code 用のフック（scripts/）と共通テーマ（theme/）のテスト。
+# Claude Code 用のフック（scripts/）と共通テーマ（theme/）、デプロイ用ロールのガードレール
+# （infra/lib/deploy-guardrail.ts）のテスト。どれも各アプリに配るファイル。
 #
 # AWS の変更操作を止めるガード（deny-aws-writes）は、壊れても何も言わずに
 # 素通りさせる側に倒れうる。アプリのコードとは別に、ここで毎回確かめる。
@@ -9,7 +10,10 @@ on:
     paths:
       - 'scripts/**'
       - 'theme/**'
+      - 'infra/**'
+      - '.github/deploy-guardrail-check/**'
       - '.claude/settings.json'
+      - '.mcp.json'
       - '.template-sync.json'
       - '.github/workflows/claude-hooks.yml'
   push:
@@ -17,7 +21,10 @@ on:
     paths:
       - 'scripts/**'
       - 'theme/**'
+      - 'infra/**'
+      - '.github/deploy-guardrail-check/**'
       - '.claude/settings.json'
+      - '.mcp.json'
       - '.template-sync.json'
       - '.github/workflows/claude-hooks.yml'
 
@@ -38,9 +45,16 @@ jobs:
         run: for f in scripts/*.sh; do bash -n "$f"; done
       - name: deny-aws-writes・template-sync・pr-watch-reminder のテスト
         run: node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs
-      - name: .template-sync.json が JSON として読める
-        run: node -e "JSON.parse(require('fs').readFileSync('.template-sync.json','utf8'))"
+      - name: .template-sync.json と .mcp.json が JSON として読める
+        run: node -e "for (const f of ['.template-sync.json', '.mcp.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
       - name: japanese-guard のテスト
         run: python3 scripts/japanese-guard/test_japanese_guard.py
       - name: 共通テーマのテスト（ダークの値の一致とコントラスト）
         run: node --test theme/sakekasu-theme.test.mjs
+      # テンプレートには infra/package.json が無いので、検査用の小さな package を使う。
+      # このワークフローは各アプリにも配るが、検査用の package は配らない。各アプリでは
+      # infra の型チェックとテストが同じファイルを見るので、テンプレートでだけ走らせる
+      - name: deploy-guardrail の型と中身（Deny だけ・Sid の重なり・管理ポリシーの上限）
+        if: hashFiles('.github/deploy-guardrail-check/package.json') != ''
+        working-directory: .github/deploy-guardrail-check
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run check
