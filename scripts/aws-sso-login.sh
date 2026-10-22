@@ -12,6 +12,8 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib/aws-verify-common.sh
+. "$script_dir/lib/aws-verify-common.sh"
 profile=verify
 log=${SAKEKASU_SSO_LOG:-/tmp/sakekasu-aws-sso-login.log}
 # URLとコードがログに出るまでの待ち時間。SessionStart フックから呼ばれても
@@ -33,8 +35,7 @@ esac
 
 # ローカルセッションでは何もしない。setup-aws-profile.sh が ~/.aws/config を
 # 上書きするため、リポジトリ共有のこのスクリプトもクラウドだけを対象にする
-remote=$(printf '%s' "${CLAUDE_CODE_REMOTE:-}" | tr '[:upper:]' '[:lower:]')
-if [ "$remote" != "true" ] && [ "$remote" != "1" ]; then
+if ! is_remote; then
   echo "Local session detected. Skipped (use your own AWS profile)."
   exit 0
 fi
@@ -54,16 +55,8 @@ needs_setup() {
     *) return 0 ;;
   esac
   grep -q '^\[sso-session verify\]' ~/.aws/config 2> /dev/null || return 0
-  local conf="$script_dir/aws-verify.conf" key value expected="# verify-config:"
-  for key in SSO_START_URL SSO_REGION SSO_ACCOUNT_ID SSO_ROLE_NAME AWS_VERIFY_REGION SSO_EXTRA_PROFILES; do
-    if [ "$key" = SSO_EXTRA_PROFILES ]; then
-      value=${!key-$(sed -n "s/^${key}=//p" "$conf" 2> /dev/null | tail -1)}
-    else
-      value=${!key:-$(sed -n "s/^${key}=//p" "$conf" 2> /dev/null | tail -1)}
-    fi
-    expected="$expected $value"
-  done
-  [ "$(head -1 ~/.aws/config)" = "$expected" ] || return 0
+  load_verify_conf "$script_dir/aws-verify.conf"
+  [ "$(head -1 ~/.aws/config)" = "$(verify_config_line)" ] || return 0
   return 1
 }
 

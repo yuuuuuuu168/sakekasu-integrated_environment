@@ -7,9 +7,10 @@
 set -euo pipefail
 
 # ローカルセッションでは何も判定しない。stdin を捨てて即座に抜ける
-# （node の起動を挟まないよう、判定より前に返す）
-remote=$(printf '%s' "${CLAUDE_CODE_REMOTE:-}" | tr '[:upper:]' '[:lower:]')
-if [ "$remote" != "true" ] && [ "$remote" != "1" ]; then
+# （node の起動を挟まないよう、判定より前に返す）。
+# 共通の関数が読めないときは、素通りさせずに判定する側に倒す
+# shellcheck source=lib/aws-verify-common.sh
+if . "$(dirname "$0")/lib/aws-verify-common.sh" 2> /dev/null && ! is_remote; then
   cat > /dev/null
   exit 0
 fi

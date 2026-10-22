@@ -57,7 +57,8 @@ iPhone のブラウザ／Claude アプリからタスクを投げ、「タスク
 - 変更操作は [scripts/deny-aws-writes.sh](../scripts/deny-aws-writes.sh)（`PreToolUse` フック）が止める。読み取り操作だけを通す許可リスト方式で、`get-` / `list-` / `describe-` などの接頭辞と、`sso login` / `logs tail` / `s3 ls` のような明示リストに載るものだけが通る。明示リストに足すときは、`ecs execute-command` のように名前が読み取りっぽくても実質が違うものがあるため、一つずつ実際の権限を確かめる。`invoke` や `assume-role` のように動詞が read でも write でもない操作を数え漏らさないため、拒否リストではなく許可リストにしている
 - 名前が読み取りに見えても、資格情報を返す操作や IAM で認証されない操作は明示的に落とす。一覧は CLI 同梱の botocore モデルから機械的に出した
 - このフックはうっかり変更操作を打つのを止める関門であって、権限の境界ではない。本当の境界は `AgentVerifyAccess` の IAM 側と、Identity Center の割り当てにある
-- 判定のテストは [scripts/deny-aws-writes.test.mjs](../scripts/deny-aws-writes.test.mjs) にある。`node --test scripts/deny-aws-writes.test.mjs` で走り、CI では `.github/workflows/claude-hooks.yml` が回す
+- 追えない形は既知の限界としてテストに固定してある（別名で置いた実体、標準入力からコマンドを読むシェルの中身）。後者を一律に拒否すると、シェルに流し込む形のインストール手順まで止まるため、拒否はしていない（#46）
+- 判定の本体は [scripts/deny-aws-writes-core.mjs](../scripts/deny-aws-writes-core.mjs)、テストは [scripts/deny-aws-writes.test.mjs](../scripts/deny-aws-writes.test.mjs) にある。`node --test scripts/deny-aws-writes.test.mjs` で走り、CI では `.github/workflows/claude-hooks.yml` が回す
 - このフックも**クラウドでだけ判定する**。`permissions.deny` に書くとリポジトリ共有のためローカルの正当な管理作業（`sso-admin create-permission-set` など）まで止まり（sakekasu-builder で実際に一度それで詰まった）
 - Network access は `awsapps.com` と `*.amazonaws.com` への到達が必要。認証エラーに見える失敗はまずここを疑う
 - `.claude/settings.json` の `permissions.allow` には `aws sso login` / `aws sts get-caller-identity` / `bash scripts/aws-sso-login.sh` を入れてある。ログインのたびに承認プロンプトを挟まないためで、変更操作の関門は従来どおり `deny-aws-writes.sh` と IAM 側にある

@@ -42,13 +42,19 @@ sakekasu-template の変更を、このリポジトリに取り込む。ファ�
    - `.claude/settings.json`：フックと `permissions.allow` は足し合わせる。同じコマンドを二重に登録しない。
      このリポジトリにしかないフック（AI-DLC など）は残す
    - `CLAUDE.md`：テンプレートの共通ルールの節だけを直す。アプリ固有の節には触れない
-   - `scripts/cloud-setup.sh`：`NPM_DIRS` やリポジトリ固有の処理（bun の導入など）は残す
+   - `scripts/cloud-setup.conf`：`NPM_DIRS` はこのリポジトリの値を残す
    - `scripts/aws-verify.conf`：アカウントを変えているリポジトリなら、その値を残す
    - 初回（前回の同期が無い）は、テンプレートとの全体の差が出る。取り込み済みの内容との
      言い回しの違いまで無理に合わせなくてよい。意味が変わるところだけ合わせる
 
    テンプレートのファイルをこのリポジトリで意図的に変えていて、上書きされると困る managed が
    あれば、`.template-sync.json` の `exclude` に足してから `--apply` をやり直す。
+
+   出力に「merged から managed に移った」が出たら、そのファイルは `--apply` で上書きされている。
+   差分の `-` の行が、このリポジトリで書き足していて消えた内容なので、テンプレートが用意した
+   置き場所に移す。`scripts/cloud-setup.sh` なら次のとおり（元の内容は `git diff` でも見られる）。
+   - `NPM_DIRS=(...)` の並び → `scripts/cloud-setup.conf` の `NPM_DIRS=`（空白区切り）
+   - 書き足していた処理（bun の導入など）→ `scripts/cloud-setup.d/<名前>.sh`。名前順に bash で走る
 
    出力に「テンプレートの一覧から外れた」が出たら、テンプレートが配るのをやめたファイル。
    `--apply` では消さないので、このリポジトリでも要らなければ消し、使っていれば残す
@@ -58,10 +64,10 @@ sakekasu-template の変更を、このリポジトリに取り込む。ファ�
 5. **確かめる。**
 
    ```sh
-   node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs
+   node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs scripts/lib/aws-verify-common.test.mjs scripts/cloud-setup.test.mjs
    node --test theme/sakekasu-theme.test.mjs
    python3 scripts/japanese-guard/test_japanese_guard.py
-   for f in scripts/*.sh; do bash -n "$f"; done
+   for f in scripts/*.sh scripts/lib/*.sh; do bash -n "$f"; done
    node -e "for (const f of ['.claude/settings.json', '.mcp.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
    ```
 

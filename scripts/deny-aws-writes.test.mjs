@@ -1,27 +1,26 @@
-// deny-aws-writes.mjs の判定のテスト。依存を増やしたくないので node:test で書く。
+// deny-aws-writes の判定のテスト。依存を増やしたくないので node:test で書く。
 // 実行は `node --test scripts/deny-aws-writes.test.mjs`。
 // CI では .github/workflows/claude-hooks.yml が走らせる。
 //
-// 関数を import せず、フックと同じように子プロセスへ JSON を流し込んでいる。
-// 「直接実行されたときだけ判定する」ガードを置くと、実行パスにシンボリックリンクが
-// 挟まったときに判定ごと素通りするため、ガードを設けずに済む形にしてある。
+// 判定は scripts/deny-aws-writes-core.mjs の関数を import して確かめる（子プロセスを 1 件ずつ起動しない）。
+// 入口の scripts/deny-aws-writes.mjs は、最後に子プロセスとして起動して、stdin から読んで判定を返すことと、
+// 常に終了コード 0 で終わることだけを確かめる。
 //
 // sakekasu-builder の PR #164 のセキュリティレビューで指摘されたバイパスの各形を、ここに固定する。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { decide, findDenied, isRead, parseInvocation, tokenize } from './deny-aws-writes-core.mjs';
 
 const HOOK = fileURLToPath(new URL('./deny-aws-writes.mjs', import.meta.url));
 
-function run(command) {
-  const result = spawnSync(process.execPath, [HOOK], {
-    input: JSON.stringify({ tool_input: { command } }),
-    encoding: 'utf8',
-  });
-  assert.equal(result.status, 0, `フックは常に 0 で終わる: ${result.stderr}`);
-  return result.stdout;
+/** フックの入口を子プロセスで起動する（入口の確認だけに使う） */
+function runHook(input) {
+  return spawnSync(process.execPath, [HOOK], { input, encoding: 'utf8' });
 }
+
+const run = (command) => decide(JSON.stringify({ tool_input: { command } }));
 
 const allows = (command) => assert.equal(run(command), '', `通るはず: ${command}`);
 const denies = (command) => assert.match(
@@ -324,6 +323,13 @@ test('パスの形のコマンド名に混ぜ物があっても止める', () =>
 test('別名で置いた実体は追えない（既知の限界）', () => {
   allows('/tmp/x logs delete-log-group --log-group-name y');
 });
+// 標準入力からコマンドを読むシェルの中身は、フックの入力では別のコマンドの引数としてしか見えない（#46）。
+// 一律に拒否すると、シェルに流し込む形のインストール手順まで止まるので、拒否はしない。
+// 本当の境界は IAM（読み取り専用の Permission Set）側にある。-c で渡したものは読み直して止める
+test('標準入力から読むシェルの中身は追えない（既知の限界）', () => {
+  allows("printf '%s\\n' 'aws s3 rm s3://x/y' | bash");
+  denies("bash -c 'aws s3 rm s3://x/y'");
+});
 // 落として空になる語は名前ではない。日本語の散文を止めないための境目
 test('日本語の散文は呼び出しと見なさない', () => {
   allows('echo クラウドには aws が入っていないため手で入れる');
@@ -435,7 +441,43 @@ test('引用符で囲った引数の中の区切り文字は区切りにしな�
 });
 
 test('壊れた入力では判定しない', () => {
-  const result = spawnSync(process.execPath, [HOOK], { input: 'not json', encoding: 'utf8' });
+  assert.equal(decide('not json'), '');
+  assert.equal(decide(''), '');
+});
+
+// 関数単位でも呼べる（バイパスの形を足すときに、どの段で落ちるかを見分けやすい）
+test('関数単位: 区切りで語を分け、aws の呼び出しからサービスと操作を取り出す', () => {
+  const tokens = tokenize('echo x && aws --profile verify s3 rm s3://b');
+  const at = tokens.indexOf('aws');
+  assert.ok(at > 0);
+  assert.deepEqual(
+    (({ service, operation }) => ({ service, operation }))(parseInvocation(tokens, at)),
+    { service: 's3', operation: 'rm' },
+  );
+  assert.equal(isRead('s3', 'ls'), true);
+  assert.equal(isRead('s3', 'rm'), false);
+  assert.equal(findDenied('aws s3 ls s3://b; aws s3 rm s3://b'), 'aws s3 rm');
+  assert.equal(findDenied('aws s3 ls s3://b'), null);
+});
+
+// ここから下は入口（scripts/deny-aws-writes.mjs）の確認。子プロセスとして起動する
+test('入口: 変更操作には deny を返し、読み取りには何も出さない。どちらも終了コード 0', () => {
+  const denied = runHook(JSON.stringify({ tool_input: { command: 'aws s3 rm s3://b/k' } }));
+  assert.equal(denied.status, 0, denied.stderr);
+  assert.match(denied.stdout, /"permissionDecision":"deny"/);
+  const allowed = runHook(JSON.stringify({ tool_input: { command: 'aws s3 ls s3://b' } }));
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.equal(allowed.stdout, '');
+});
+
+test('入口: 読み切れないコマンドも、終了コード 0 のまま拒否する', () => {
+  const result = runHook(JSON.stringify({ tool_input: { command: 'echo $(aws s3 rm s3://b' } }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"permissionDecision":"deny"/);
+});
+
+test('入口: 壊れた入力では判定しない', () => {
+  const result = runHook('not json');
   assert.equal(result.status, 0);
   assert.equal(result.stdout, '');
 });
