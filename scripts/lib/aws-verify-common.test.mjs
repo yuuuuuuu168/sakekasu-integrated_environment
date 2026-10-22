@@ -9,6 +9,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const lib = fileURLToPath(new URL('./aws-verify-common.sh', import.meta.url));
+// ダミーのアカウント ID。各アプリには「12 桁の数字をリポジトリに書かない」見張りのテストがあるので、
+// ファイルには数字を並べず、実行するときに組み立てる
+const ACCOUNT = '1'.repeat(12);
+const EXTRA_ACCOUNT = '2'.repeat(12);
+const OVERRIDE_ACCOUNT = '3'.repeat(12);
+
 const KEYS = ['SSO_START_URL', 'SSO_REGION', 'SSO_ACCOUNT_ID', 'SSO_ROLE_NAME', 'AWS_VERIFY_REGION', 'SSO_EXTRA_PROFILES'];
 
 // 親の環境に同名の変数があっても結果が変わらないよう、キーと CLAUDE_CODE_REMOTE は除いて渡す
@@ -30,10 +36,10 @@ const conf = () => writeConf([
   '# コメント',
   'SSO_START_URL=https://example.awsapps.com/start',
   'SSO_REGION=ap-northeast-1',
-  'SSO_ACCOUNT_ID=123456789012',
+  `SSO_ACCOUNT_ID=${ACCOUNT}`,
   'SSO_ROLE_NAME=AgentVerifyAccess',
   'AWS_VERIFY_REGION=us-east-1',
-  'SSO_EXTRA_PROFILES=verify-org:111122223333',
+  `SSO_EXTRA_PROFILES=verify-org:${EXTRA_ACCOUNT}`,
 ]);
 
 test('is_remote は true と 1 を大文字小文字を問わず受ける', () => {
@@ -49,18 +55,21 @@ test('is_remote は true と 1 を大文字小文字を問わず受ける', () =
 test('verify_config_line は aws-verify.conf の値を決まった順に並べる', () => {
   assert.equal(
     run(`load_verify_conf "${conf()}"; verify_config_line`),
-    '# verify-config: https://example.awsapps.com/start ap-northeast-1 123456789012 AgentVerifyAccess us-east-1 verify-org:111122223333',
+    `# verify-config: https://example.awsapps.com/start ap-northeast-1 ${ACCOUNT} AgentVerifyAccess us-east-1 verify-org:${EXTRA_ACCOUNT}`,
   );
 });
 
 test('同じ名前の環境変数があればそちらを使い、空の値は conf の値に戻す', () => {
-  const line = run(`load_verify_conf "${conf()}"; verify_config_line`, { SSO_ACCOUNT_ID: '000000000000', SSO_REGION: '' });
-  assert.equal(line, '# verify-config: https://example.awsapps.com/start ap-northeast-1 000000000000 AgentVerifyAccess us-east-1 verify-org:111122223333');
+  const line = run(`load_verify_conf "${conf()}"; verify_config_line`, { SSO_ACCOUNT_ID: OVERRIDE_ACCOUNT, SSO_REGION: '' });
+  assert.equal(
+    line,
+    `# verify-config: https://example.awsapps.com/start ap-northeast-1 ${OVERRIDE_ACCOUNT} AgentVerifyAccess us-east-1 verify-org:${EXTRA_ACCOUNT}`,
+  );
 });
 
 test('SSO_EXTRA_PROFILES だけは、空の環境変数でも conf より優先する', () => {
   const line = run(`load_verify_conf "${conf()}"; verify_config_line`, { SSO_EXTRA_PROFILES: '' });
-  assert.equal(line, '# verify-config: https://example.awsapps.com/start ap-northeast-1 123456789012 AgentVerifyAccess us-east-1 ');
+  assert.equal(line, `# verify-config: https://example.awsapps.com/start ap-northeast-1 ${ACCOUNT} AgentVerifyAccess us-east-1 `);
 });
 
 test('同じキーが何度も書かれていれば最後の行を使い、conf が無ければ空にする', () => {
