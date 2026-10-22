@@ -30,10 +30,10 @@ const conf = () => writeConf([
   '# コメント',
   'SSO_START_URL=https://example.awsapps.com/start',
   'SSO_REGION=ap-northeast-1',
-  'SSO_ACCOUNT_ID=111111111111',
+  'SSO_ACCOUNT_ID=123456789012',
   'SSO_ROLE_NAME=AgentVerifyAccess',
   'AWS_VERIFY_REGION=us-east-1',
-  'SSO_EXTRA_PROFILES=verify-org:222222222222',
+  'SSO_EXTRA_PROFILES=verify-org:111122223333',
 ]);
 
 test('is_remote は true と 1 を大文字小文字を問わず受ける', () => {
@@ -49,18 +49,18 @@ test('is_remote は true と 1 を大文字小文字を問わず受ける', () =
 test('verify_config_line は aws-verify.conf の値を決まった順に並べる', () => {
   assert.equal(
     run(`load_verify_conf "${conf()}"; verify_config_line`),
-    '# verify-config: https://example.awsapps.com/start ap-northeast-1 111111111111 AgentVerifyAccess us-east-1 verify-org:222222222222',
+    '# verify-config: https://example.awsapps.com/start ap-northeast-1 123456789012 AgentVerifyAccess us-east-1 verify-org:111122223333',
   );
 });
 
 test('同じ名前の環境変数があればそちらを使い、空の値は conf の値に戻す', () => {
-  const line = run(`load_verify_conf "${conf()}"; verify_config_line`, { SSO_ACCOUNT_ID: '333333333333', SSO_REGION: '' });
-  assert.equal(line, '# verify-config: https://example.awsapps.com/start ap-northeast-1 333333333333 AgentVerifyAccess us-east-1 verify-org:222222222222');
+  const line = run(`load_verify_conf "${conf()}"; verify_config_line`, { SSO_ACCOUNT_ID: '000000000000', SSO_REGION: '' });
+  assert.equal(line, '# verify-config: https://example.awsapps.com/start ap-northeast-1 000000000000 AgentVerifyAccess us-east-1 verify-org:111122223333');
 });
 
 test('SSO_EXTRA_PROFILES だけは、空の環境変数でも conf より優先する', () => {
   const line = run(`load_verify_conf "${conf()}"; verify_config_line`, { SSO_EXTRA_PROFILES: '' });
-  assert.equal(line, '# verify-config: https://example.awsapps.com/start ap-northeast-1 111111111111 AgentVerifyAccess us-east-1 ');
+  assert.equal(line, '# verify-config: https://example.awsapps.com/start ap-northeast-1 123456789012 AgentVerifyAccess us-east-1 ');
 });
 
 test('同じキーが何度も書かれていれば最後の行を使い、conf が無ければ空にする', () => {
