@@ -4,11 +4,13 @@
 # ここで書き出す ~/.aws/config にシークレットは含まれない（SSOのURL・アカウントID・ロール名のみ）。
 set -euo pipefail
 
+script_dir=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib/aws-verify-common.sh
+. "$script_dir/lib/aws-verify-common.sh"
+
 # ローカルセッションでは何もしない。ローカルの ~/.aws/config には
 # 開発用の複数プロファイルが入っており、上書きすると失われるため。
-# True / TRUE / 1 でも通るよう、比較前に小文字へ正規化する
-remote=$(printf '%s' "${CLAUDE_CODE_REMOTE:-}" | tr '[:upper:]' '[:lower:]')
-if [ "$remote" != "true" ] && [ "$remote" != "1" ]; then
+if ! is_remote; then
   echo "Local session detected. Skipped (would overwrite ~/.aws/config)."
   exit 0
 fi
@@ -16,13 +18,7 @@ fi
 # SSO の値は scripts/aws-verify.conf から読む。同名の環境変数があればそちらを優先する
 # （クラウド環境の Environment variables で上書きできるように）。AWS CLI を落とす前に
 # 確かめるのは、未設定のまま 70MB を落としてから失敗させないため
-conf="$(cd "$(dirname "$0")" && pwd)/aws-verify.conf"
-for key in SSO_START_URL SSO_REGION SSO_ACCOUNT_ID SSO_ROLE_NAME AWS_VERIFY_REGION; do
-  if [ -z "${!key:-}" ] && [ -f "$conf" ]; then
-    value=$(sed -n "s/^${key}=//p" "$conf" | tail -1)
-    printf -v "$key" '%s' "$value"
-  fi
-done
+load_verify_conf "$script_dir/aws-verify.conf"
 missing=""
 for key in SSO_START_URL SSO_REGION SSO_ACCOUNT_ID SSO_ROLE_NAME AWS_VERIFY_REGION; do
   [ -n "${!key:-}" ] || missing="$missing $key"
@@ -34,9 +30,6 @@ if [ -n "$missing" ]; then
 fi
 
 # verify 以外のプロファイル（任意）。「名前:アカウントID」をカンマで並べる
-if [ -z "${SSO_EXTRA_PROFILES+set}" ] && [ -f "$conf" ]; then
-  SSO_EXTRA_PROFILES=$(sed -n "s/^SSO_EXTRA_PROFILES=//p" "$conf" | tail -1)
-fi
 extra_profiles=()
 if [ -n "${SSO_EXTRA_PROFILES:-}" ]; then
   IFS=',' read -r -a extra_profiles <<< "$SSO_EXTRA_PROFILES"
@@ -88,7 +81,6 @@ ensure_aws_cli_v2() {
     return 1
   fi
 
-  script_dir=$(cd "$(dirname "$0")" && pwd)
   base_url="https://awscli.amazonaws.com/awscli-exe-linux-$arch.zip"
 
   tmp=$(mktemp -d)
@@ -174,7 +166,7 @@ write_profile() {
 }
 
 {
-  echo "# verify-config: $SSO_START_URL $SSO_REGION $SSO_ACCOUNT_ID $SSO_ROLE_NAME $AWS_VERIFY_REGION ${SSO_EXTRA_PROFILES:-}"
+  verify_config_line
   echo "[sso-session verify]"
   echo "sso_start_url = $SSO_START_URL"
   echo "sso_region = $SSO_REGION"

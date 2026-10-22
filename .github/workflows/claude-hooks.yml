@@ -42,9 +42,9 @@ jobs:
       - name: settings.json が JSON として読める
         run: node -e "JSON.parse(require('fs').readFileSync('.claude/settings.json','utf8'))"
       - name: シェルスクリプトの構文
-        run: for f in scripts/*.sh; do bash -n "$f"; done
-      - name: deny-aws-writes・template-sync・pr-watch-reminder のテスト
-        run: node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs
+        run: for f in scripts/*.sh scripts/lib/*.sh; do bash -n "$f"; done
+      - name: deny-aws-writes・template-sync・pr-watch-reminder・aws-verify-common・cloud-setup のテスト
+        run: node --test scripts/deny-aws-writes.test.mjs scripts/template-sync.test.mjs scripts/pr-watch-reminder.test.mjs scripts/lib/aws-verify-common.test.mjs scripts/cloud-setup.test.mjs
       - name: .template-sync.json と .mcp.json が JSON として読める
         run: node -e "for (const f of ['.template-sync.json', '.mcp.json']) JSON.parse(require('fs').readFileSync(f,'utf8'))"
       - name: japanese-guard のテスト

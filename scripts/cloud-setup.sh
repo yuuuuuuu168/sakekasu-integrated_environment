@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
 # Claude Code on the web のクラウドセッション用セットアップ。
 # .claude/settings.json の SessionStart フックから毎セッション呼ばれる。
+#
+# このファイルはテンプレートと同じ中身を保つ（managed）。リポジトリごとの違いは次の 2 か所に書く。
+#   scripts/cloud-setup.conf  npm ci を走らせるディレクトリ（NPM_DIRS）
+#   scripts/cloud-setup.d/    追加のセットアップ。*.sh を名前順に bash で走らせる（bun の導入など）
 set -euo pipefail
 
 # ローカルセッションでは何もしない（このフックはリポジトリ共有設定のため、
-# ローカルの Claude Code でも発火する。クラウドVMだけを対象にする）
-if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
+# ローカルの Claude Code でも発火する。クラウドVMだけを対象にする）。
+# 判定は AWS のスクリプトやフックと同じ関数を使い、CLAUDE_CODE_REMOTE=1 でも動かす
+# shellcheck source=lib/aws-verify-common.sh
+. "$(dirname "$0")/lib/aws-verify-common.sh"
+if ! is_remote; then
   exit 0
 fi
 
 cd "$(dirname "$0")/.."
 
-# npm ci を走らせるディレクトリ。package-lock.json が無いものは飛ばすので、
-# テンプレートから作った直後（まだ何も無い）でも落ちない。
-# infra/ などを足したら、ここに並べる
-NPM_DIRS=(. infra)
+# npm ci を走らせるディレクトリ。scripts/cloud-setup.conf の NPM_DIRS に空白区切りで並べる
+# （無ければ . と infra）。package-lock.json が無いものは飛ばすので、テンプレートから作った直後
+# （まだ何も無い）でも落ちない
+npm_dirs_conf=""
+if [ -f scripts/cloud-setup.conf ]; then
+  npm_dirs_conf=$(sed -n 's/^NPM_DIRS=//p' scripts/cloud-setup.conf | tail -1)
+fi
+read -r -a NPM_DIRS <<< "${npm_dirs_conf:-. infra}"
 
 hash_file() {
   # クラウドVM（Linux）は sha256sum、macOS は shasum
@@ -37,12 +48,21 @@ install_if_needed() {
   current=$(hash_file "$dir/package-lock.json")
   if [ "$(cat "$marker" 2>/dev/null)" != "$current" ]; then
     (cd "$dir" && npm ci)
+    # 依存が 1 つも無いと npm ci は node_modules を作らない
+    mkdir -p "$dir/node_modules"
     echo "$current" > "$marker"
   fi
 }
 
 for dir in "${NPM_DIRS[@]}"; do
   install_if_needed "$dir"
+done
+
+# リポジトリ固有の追加のセットアップ。1 つが失敗しても、残りと運用方針の出力は続ける
+# （運用方針が出ないと、そのセッションは watch や日本語の約束を知らないまま始まる）
+for extra in scripts/cloud-setup.d/*.sh; do
+  [ -f "$extra" ] || continue
+  bash "$extra" || echo "$extra が失敗した（終了コード $?）。セッションは続ける。"
 done
 
 # セッション開始時の運用方針。SessionStart フックの標準出力はそのまま Claude の

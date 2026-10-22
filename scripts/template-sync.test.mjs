@@ -2,10 +2,11 @@
 // 一時ディレクトリにテンプレート（git リポジトリ）と取り込み先を作って確かめる。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { sync } from './template-sync.mjs';
 
 function write(root, path, content, mode) {
@@ -79,9 +80,25 @@ test('2回目以降の merged は、前回の同期以降のテンプレート�
   assert.equal(readFileSync(join(repo, 'scripts/hook.sh'), 'utf8'), 'echo v1\n', '--apply なしでは書き換えない');
 });
 
+test('2回目以降でも、このリポジトリに無い merged は全体を出す', () => {
+  const template = makeTemplate();
+  const repo = makeRepo();
+  write(repo, 'CLAUDE.md', '# app\n');
+  sync({ repo, template, apply: true });
+  rmSync(join(repo, 'CLAUDE.md'));
+
+  // テンプレート側は前回の同期から変わっていない
+  const report = sync({ repo, template, apply: false });
+  assert.equal(report.merged.length, 1);
+  assert.equal(report.merged[0].exists, false);
+  assert.match(report.merged[0].diff, /\+# rules/);
+  assert.match(report.merged[0].diff, /\+- a/);
+});
+
 test('テンプレートに変更が無ければ何も出さない', () => {
   const template = makeTemplate();
   const repo = makeRepo();
+  write(repo, 'CLAUDE.md', '# app\n');
   sync({ repo, template, apply: true });
 
   const report = sync({ repo, template, apply: false });
@@ -154,6 +171,29 @@ test('前回の同期のコミットが無ければ、外れたファイルは�
   assert.deepEqual(sync({ repo, template, apply: false }).removed, []);
 });
 
+test('merged から managed に移ったファイルは、上書きで消える差分を出す', () => {
+  const template = makeTemplate();
+  const repo = makeRepo();
+  write(repo, 'CLAUDE.md', '# rules\n- a\n- local rule\n');
+  sync({ repo, template, apply: true });
+
+  write(template, '.template-sync.json', JSON.stringify({
+    template: 'owner/tpl', syncedCommit: null,
+    managed: ['scripts/hook.sh', 'scripts/other.mjs', 'CLAUDE.md'], merged: [], exclude: [],
+  }));
+  git(template, 'commit', '-qam', 'promote');
+
+  const report = sync({ repo, template, apply: true });
+  assert.deepEqual(report.promoted.map((entry) => entry.path), ['CLAUDE.md']);
+  assert.match(report.promoted[0].diff, /^-- local rule$/m, '消える行が - で出る');
+  assert.deepEqual(report.removed, [], '移っただけなので外れたとは数えない');
+  assert.equal(readFileSync(join(repo, 'CLAUDE.md'), 'utf8'), '# rules\n- a\n', 'managed になったので上書きする');
+
+  // 次の同期では、もう移ったものとしては出さない
+  write(repo, 'CLAUDE.md', '# local again\n');
+  assert.deepEqual(sync({ repo, template, apply: false }).promoted, []);
+});
+
 test('managed に無い exclude を報告する', () => {
   const template = makeTemplate();
   const repo = makeRepo();
@@ -173,4 +213,30 @@ test('テンプレートの一覧にあるファイルが無ければ止まる',
   git(template, 'commit', '-qm', 'rm');
   assert.throws(() => sync({ repo: makeRepo(), template, apply: false }), /scripts\/other\.mjs/);
   assert.equal(existsSync(join(template, 'scripts/other.mjs')), false);
+});
+
+// 直接実行の判定。パスに空白や日本語があるとき、シンボリックリンク経由のときも、黙って終わらずに動く
+test('空白と日本語を含むパスや、シンボリックリンク経由でも直接実行できる', () => {
+  const template = makeTemplate();
+  const dir = mkdtempSync(join(tmpdir(), 'sync dir 同期-'));
+  const script = join(dir, 'template-sync.mjs');
+  copyFileSync(fileURLToPath(new URL('./template-sync.mjs', import.meta.url)), script);
+  const link = join(mkdtempSync(join(tmpdir(), 'link-')), 'template-sync.mjs');
+  symlinkSync(script, link);
+
+  for (const path of [script, link]) {
+    const result = spawnSync(process.execPath, [path, '--template', template, '--repo', makeRepo()], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /scripts\/hook\.sh/, path);
+  }
+});
+
+test('--template や --repo の値が無ければ、使い方を出して止まる', () => {
+  const script = fileURLToPath(new URL('./template-sync.mjs', import.meta.url));
+  for (const args of [['--template'], ['--template', '--apply'], ['--template', '.', '--repo']]) {
+    const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 2, args.join(' '));
+    assert.match(result.stderr, /の値が要る/);
+    assert.match(result.stderr, /usage:/);
+  }
 });
