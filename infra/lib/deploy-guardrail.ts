@@ -112,6 +112,9 @@ export function deployGuardrailStatements(props: DeployGuardrailProps): iam.Poli
   if (resourceNamePrefixes.length === 0) {
     throw new Error('resourceNamePrefixes が空。空だと DenyRolesOutsideApp が全ロールを拒否する');
   }
+  if (protectedRoleNames.length === 0) {
+    throw new Error('protectedRoleNames が空。空だと GitHub Actions のロールを守る Deny 文の resources が空になる');
+  }
   const stateBucket = `arn:aws:s3:::cdkd-state-${account}`;
   const otherStacks = Object.entries(CDKD_STACK_NAME_PATTERNS)
     .filter(([name]) => name !== app)
