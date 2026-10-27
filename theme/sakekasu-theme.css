@@ -10,12 +10,17 @@
  *   - Tailwind v4 のアプリは @theme inline で --sk-* を自分の色名に割り当てる
  *   - ライト/ダークは OS の設定に従う。アプリで切り替えるときは <html> に
  *     data-theme="light" か data-theme="dark" を付ける（クラスでは切り替えない）
- *   - 画面の一部だけをダークにするときは、その要素に color-scheme: dark を付ける。
- *     --sk-* の値を書き写して上書きしなくてよい
+ *   - 画面の一部（サインイン画面など）だけをダークにするときは、その要素に color-scheme: dark を付け、
+ *     その画面を出している間は <html> の color-scheme も dark にする（例: html:has(.signin)）。
+ *     --sk-* の値を書き写して上書きしなくてよい。<html> にも付けるのは、Vite 8 などの lightningcss が
+ *     light-dark() を var(--lightningcss-light, …) var(--lightningcss-dark, …) に書き換え、--sk-* の値が
+ *     :root の color-scheme で決まってしまうため（要素の color-scheme だけでは中がダークにならない）。
+ *     <html> の側のセレクタには [data-theme] つきも並べ、下の :root[data-theme='light'] に詳細度で負けないようにする
  *
  * 書き方
- *   - 色は :root の 1 か所に light-dark(ライト, ダーク) で書く。どちらになるかは、変数を使う要素の
- *     color-scheme で決まる（:root で決まるのではない）。data-theme はその color-scheme を切り替えるだけ
+ *   - 色は :root の 1 か所に light-dark(ライト, ダーク) で書く。どちらになるかは、ブラウザがそのまま解くなら
+ *     変数を使う要素の color-scheme で、lightningcss が書き換えたあとは :root の color-scheme で決まる。
+ *     data-theme はその color-scheme を切り替えるだけ
  *   - ブランドの色と同じ値は var(--sk-indigo) などで引く。それ以外は 16 進 6 桁で書く
  *   - 使ってよいのは 16 進 6 桁、var(--sk-*)、light-dark() の 3 つだけ。theme/sakekasu-theme.test.mjs と、
  *     sakekasu-integrated_environment の infra/lib/theme.ts（共通ログイン画面と入口のページの色を
