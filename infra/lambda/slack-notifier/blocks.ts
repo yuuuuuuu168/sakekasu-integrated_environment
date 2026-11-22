@@ -30,11 +30,11 @@ function headline(state: string | undefined, rawAlarmName: string): string {
   const app = `[${appForAlarm(rawAlarmName)}]`;
   switch (state) {
     case 'ALARM':
-      return `🚨 ${app} 異常を検知しました: ${alarmName}`;
+      return `🚨 ${app} 異常を検知しました: ${alarmName}`; // check-ui-ignore: Slack の通知の見出しの印（画面の HTML ではない）
     case 'OK':
-      return `✅ ${app} 復旧しました: ${alarmName}`;
+      return `✅ ${app} 復旧しました: ${alarmName}`; // check-ui-ignore: Slack の通知の見出しの印（画面の HTML ではない）
     case 'INSUFFICIENT_DATA':
-      return `⚠️ ${app} データ不足で判定できません: ${alarmName}`;
+      return `⚠️ ${app} データ不足で判定できません: ${alarmName}`; // check-ui-ignore: Slack の通知の見出しの印（画面の HTML ではない）
     default:
       return `${app} 通知: ${alarmName}`;
   }
@@ -201,7 +201,7 @@ function buildHealthBlocks(event: HealthEvent): unknown[] {
   const category = detail.eventTypeCategory ?? '';
   const categoryLabel = healthCategoryLabel(event);
   const service = detail.service ?? '不明';
-  const icon = category === 'issue' ? '🔥' : category === 'scheduledChange' ? '🗓️' : 'ℹ️';
+  const icon = category === 'issue' ? '🔥' : category === 'scheduledChange' ? '🗓️' : 'ℹ️'; // check-ui-ignore: Slack の通知の見出しの印（画面の HTML ではない）
 
   const fields = [
     `*サービス*\n${safeText(service, 200)}`,

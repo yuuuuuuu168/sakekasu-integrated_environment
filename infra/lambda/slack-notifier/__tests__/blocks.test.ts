@@ -295,7 +295,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
       JSON.stringify({
         // clip(name, 200) は 199 文字目で切る。絵文字を 198 から置くと
         // ちょうど分断される（この値でないと壊れないことを確認済み）
-        AlarmName: 'a'.repeat(198) + '🔥' + 'b'.repeat(50),
+        AlarmName: 'a'.repeat(198) + '🔥' + 'b'.repeat(50), // check-ui-ignore
         NewStateValue: 'ALARM',
       }),
     );
@@ -304,7 +304,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
 
   it('Health のサービス名が絵文字だらけでも壊れない', async () => {
     const blocks = buildBlocksForMessage(
-      healthMessage({ service: '🔥'.repeat(200), eventTypeCategory: 'issue' }),
+      healthMessage({ service: '🔥'.repeat(200), eventTypeCategory: 'issue' }), // check-ui-ignore
     );
     expect(anyLoneSurrogate(blocks)).toBe(false);
   });
@@ -314,7 +314,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
       healthMessage({
         service: 'S3',
         eventTypeCategory: 'issue',
-        eventDescription: [{ latestDescription: '🍶'.repeat(3000) }],
+        eventDescription: [{ latestDescription: '🍶'.repeat(3000) }], // check-ui-ignore
       }),
     );
     expect(anyLoneSurrogate(blocks)).toBe(false);
@@ -326,7 +326,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
       JSON.stringify({
         // '<' は escapeMrkdwn で 4 文字（&lt;）になる。
         // 50 + 37*4 = 198 文字ぶんとなり、直後の絵文字が切り出し位置に重なる
-        AlarmName: 'a'.repeat(50) + '<'.repeat(37) + '🔥' + 'b'.repeat(50),
+        AlarmName: 'a'.repeat(50) + '<'.repeat(37) + '🔥' + 'b'.repeat(50), // check-ui-ignore
         NewStateValue: 'ALARM',
       }),
     );
@@ -335,10 +335,10 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
 
   it('切る必要がなければそのまま出す', async () => {
     const blocks = buildBlocksForMessage(
-      healthMessage({ service: '🔥S3', eventTypeCategory: 'issue' }),
+      healthMessage({ service: '🔥S3', eventTypeCategory: 'issue' }), // check-ui-ignore
     );
     const header = blocks.find((b) => b.type === 'header');
-    expect(header!.text!.text).toContain('🔥S3');
+    expect(header!.text!.text).toContain('🔥S3'); // check-ui-ignore
   });
 
   // 本文は 1500 で切るため、そこに絵文字を重ねる
@@ -347,7 +347,7 @@ describe('長い文字を切るときに絵文字を壊さない', () => {
       healthMessage({
         service: 'S3',
         eventTypeCategory: 'issue',
-        eventDescription: [{ latestDescription: 'a'.repeat(1498) + '🔥' + 'b'.repeat(50) }],
+        eventDescription: [{ latestDescription: 'a'.repeat(1498) + '🔥' + 'b'.repeat(50) }], // check-ui-ignore
       }),
     );
     expect(anyLoneSurrogate(blocks)).toBe(false);
@@ -410,9 +410,9 @@ describe('元から壊れた文字が混ざっていても落とす', () => {
 
   it('正常な絵文字は残す', async () => {
     const blocks = buildBlocksForMessage(
-      healthMessage({ service: '🍶S3', eventTypeCategory: 'issue' }),
+      healthMessage({ service: '🍶S3', eventTypeCategory: 'issue' }), // check-ui-ignore
     );
-    expect(collectStrings(blocks).join('')).toContain('🍶S3');
+    expect(collectStrings(blocks).join('')).toContain('🍶S3'); // check-ui-ignore
   });
 });
 
@@ -566,7 +566,7 @@ describe('アラームのアプリ名', () => {
   it('復旧（OK）の通知にもアプリ名を出す', async () => {
     const blocks = buildBlocksForMessage(alarm('ReinventPlanner-ApiErrors', 'OK'));
     const header = blocks.find((b) => b.type === 'header');
-    expect(header!.text!.text).toBe('✅ [reinvent] 復旧しました: ReinventPlanner-ApiErrors');
+    expect(header!.text!.text).toBe('✅ [reinvent] 復旧しました: ReinventPlanner-ApiErrors'); // check-ui-ignore
   });
 
   it('AWS Health にはアプリ名を付けない（アカウント全体の話なので）', async () => {

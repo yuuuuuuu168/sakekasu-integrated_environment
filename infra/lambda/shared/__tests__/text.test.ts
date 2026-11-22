@@ -3,7 +3,7 @@ import { clipText, dropBrokenCharacters } from '../text';
 
 describe('壊れた文字を落とす', () => {
   it('対になっていないサロゲートだけを落とす', () => {
-    expect(dropBrokenCharacters('a\ud83db🚨c\udea8')).toBe('ab🚨c');
+    expect(dropBrokenCharacters('a\ud83db🚨c\udea8')).toBe('ab🚨c'); // check-ui-ignore
   });
 });
 
@@ -19,8 +19,8 @@ describe('文字列を切り詰める', () => {
 
   it('絵文字の途中では切らない', () => {
     // 🚨 は UTF-16 で 2 単位。4 単位に収めるなら 1 つと省略記号まで
-    const clipped = clipText('🚨🚨🚨', 4);
-    expect(clipped).toBe('🚨…');
+    const clipped = clipText('🚨🚨🚨', 4); // check-ui-ignore
+    expect(clipped).toBe('🚨…'); // check-ui-ignore
     expect(() => encodeURIComponent(clipped)).not.toThrow();
   });
 });

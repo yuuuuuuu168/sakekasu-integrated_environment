@@ -44,6 +44,15 @@ PR 作成の直後には [scripts/pr-watch-reminder.mjs](scripts/pr-watch-remind
 ターンの最終回答を検査し、英語主体なら日本語で書き直させる。コードブロック・インラインコード・
 URL は数えないので、英語のコマンドや英文の下書きはコードブロックに入れて見せる。
 
+## 画面を作る・直すとき
+
+画面（HTML / CSS / コンポーネント）を作る・直すときは、`.claude/skills/app-ui-design` に従う。
+チャットや LLM の結果を出す画面なら `agent-app-ui`、スマホでも使う画面なら `mobile-web-check` も読む。
+出す前に `node scripts/unslop/check-ui.mjs <画面のソース>` を当て、指摘を 0 件にする。
+色とフォントは共通テーマ（`theme/sakekasu-theme.css` の `--sk-*`）を使い、スキルの配色の例より
+テーマを優先する。スキルと検査スクリプトは [minorun365/unslop-ai-app](https://github.com/minorun365/unslop-ai-app)
+から取り込んだもの（[scripts/unslop/README.md](scripts/unslop/README.md)）。
+
 ## AWS のインフラを触るとき
 
 `infra/` の CDK、デプロイのワークフロー、IAM のどれかを触るときは、
