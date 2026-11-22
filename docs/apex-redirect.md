@@ -26,7 +26,7 @@ apex と www は、それまで builder を配っていた Amplify Hosting か�
   - 一覧のリンクには `?sso=1` を付ける。各アプリは、これが付いていて未ログインなら、サインインのボタンを出さずに共通ログインへ送る。
     共通ログインのセッションがあるので入力なしで戻り、そのまま中に入れる。合図は送る前に URL から消すので往復は続かない。
     入口を通らずに直接開いたときは、各アプリのボタンの画面のまま
-  - 並べるアプリ・名前・絵文字は `infra/lib/portal.ts` の `PORTAL_APPS`
+  - 並べるアプリと名前は `infra/lib/portal.ts` の `PORTAL_APPS`。絵文字は置かない（`.claude/skills/app-ui-design`）
   - 色は共通テーマ（`theme/sakekasu-theme.css`）から合成のたびに作る。OS の設定によらずダークに固定する（共通ログインの画面と同じ）
   - フォントは日本語の字形のもの（ヒラギノ、游ゴシック、メイリオ、Noto Sans JP など）を先に並べる。`system-ui` は使わない（中国語の字形になる環境がある）
   - HTML は関数のコードに埋め込む。CloudFront Functions のコードは 10 KB までなので、テーマの CSS は丸ごと載せず、

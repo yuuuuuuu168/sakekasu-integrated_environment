@@ -373,8 +373,8 @@ describe('本文の長さ', () => {
 
   // 片割れのサロゲートが本文に入ると、JSON が不正になって Webhook に拒否される
   it('絵文字の途中では切らない', () => {
-    const clipped = mod.clip('🚨'.repeat(10), 10);
-    expect(clipped).toBe('🚨…（以下省略）');
+    const clipped = mod.clip('🚨'.repeat(10), 10); // check-ui-ignore
+    expect(clipped).toBe('🚨…（以下省略）'); // check-ui-ignore
     expect(() => encodeURIComponent(clipped)).not.toThrow();
   });
 
