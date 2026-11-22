@@ -15,6 +15,7 @@
 
 - `app-ui-design/SKILL.md`：検査スクリプトの場所を `~/.claude/skill-repos/...` から `scripts/unslop/check-ui.mjs` に変えた
 - `mobile-web-check/SKILL.md`：Xcode の無いクラウドセッションでは Playwright の iPhone エミュレーションで代わりに見る、という注記を足した
+- `check-ui.mjs`：行からコメントを外す正規表現を、改行と `--!>` も受ける形（`<!--[\s\S]*?--!?>`）にした。1 行ずつ読むので結果は変わらないが、CodeQL の Bad HTML filtering regexp に当たらないようにするため
 
 検査はリポジトリのルートから次のように打つ。指摘が 0 件なら終了コード 0。意図して残す行には
 `check-ui-ignore` と書くと対象から外れる。

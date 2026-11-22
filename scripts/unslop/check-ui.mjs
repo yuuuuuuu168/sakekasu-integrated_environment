@@ -42,7 +42,7 @@ const RULES = [
   {
     id: 'emoji',
     msg: '画面の文字に絵文字がある。線のアイコン1種類にするか、何も置かない',
-    test: (line, ctx) => !ctx.isCss && EMOJI.test(line.replace(/\/\/.*$|<!--.*?-->|\/\*.*?\*\//g, '')),
+    test: (line, ctx) => !ctx.isCss && EMOJI.test(line.replace(/\/\/.*$|<!--[\s\S]*?--!?>|\/\*[\s\S]*?\*\//g, '')),
   },
   {
     id: 'gradient-text',
@@ -145,7 +145,7 @@ const RULES = [
   {
     id: 'exclamation',
     msg: '画面の文言に「！」。平叙で書く',
-    test: (line, ctx) => !ctx.isCss && /！/.test(line.replace(/\/\/.*$|<!--.*?-->|\/\*.*?\*\//g, '')),
+    test: (line, ctx) => !ctx.isCss && /！/.test(line.replace(/\/\/.*$|<!--[\s\S]*?--!?>|\/\*[\s\S]*?\*\//g, '')),
   },
 ];
 
