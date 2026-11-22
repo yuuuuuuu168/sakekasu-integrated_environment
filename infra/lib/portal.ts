@@ -5,6 +5,8 @@ import { themeColor, themeFromFile, type Theme, type ThemeColors } from './theme
 export interface PortalApp {
   /** 画面に出す名前 */
   label: string;
+  /** アプリの印。4 アプリの表紙と共通の絵文字 */
+  icon: string;
   /**
    * 開く URL（https のみ）。`?sso=1` は「入口で共通ログインを済ませてきた」という合図で、
    * 各アプリは未ログインならサインインのボタンを出さずに共通ログインへ送る（入力なしで戻ってくる）
@@ -14,10 +16,10 @@ export interface PortalApp {
 
 /** ホスト名はどれも cdk.json の apps の callbackUrls にある（apex-redirect-stack.test.ts） */
 export const PORTAL_APPS: PortalApp[] = [
-  { label: '酒カス', url: `https://sake.${ROOT_DOMAIN}/?sso=1` },
-  { label: '家計簿', url: `https://kakeibo.${ROOT_DOMAIN}/?sso=1` },
-  { label: 'learning', url: `https://learning.${ROOT_DOMAIN}/?sso=1` },
-  { label: 're:Invent', url: `https://reinvent.${ROOT_DOMAIN}/?sso=1` },
+  { label: '酒カス', icon: '🍶', url: `https://sake.${ROOT_DOMAIN}/?sso=1` }, // check-ui-ignore
+  { label: '家計簿', icon: '💰', url: `https://kakeibo.${ROOT_DOMAIN}/?sso=1` }, // check-ui-ignore
+  { label: 'learning', icon: '📚', url: `https://learning.${ROOT_DOMAIN}/?sso=1` }, // check-ui-ignore
+  { label: 're:Invent', icon: '☁️', url: `https://reinvent.${ROOT_DOMAIN}/?sso=1` }, // check-ui-ignore
 ];
 
 /** 日本語の字形のフォント。iPhone・Mac はヒラギノ、Windows は游ゴシックかメイリオ、それ以外は Noto や IPA */
@@ -88,6 +90,7 @@ function buildPortalParts(theme: Theme, apps = PORTAL_APPS): PortalParts {
     '@keyframes up{from{opacity:0;transform:translateY(8px)}}' +
     '@media (prefers-reduced-motion:reduce){.cover>*{animation:none}}' +
     `h1{font-family:${JA_SERIF};font-weight:600;letter-spacing:.12em;line-height:1.2;margin:0}` +
+    '.mark{font-size:3.5rem;line-height:1;margin-bottom:8px}' +
     '.cover h1{font-size:2.5rem}' +
     '.rule{display:flex;align-items:center;gap:12px;width:min(16rem,70vw);margin:16px 0;color:var(--sk-gold-line);line-height:1}' +
     '.rule:before,.rule:after{content:"";flex:1;border-top:1px solid var(--sk-gold-line)}' +
@@ -105,6 +108,7 @@ function buildPortalParts(theme: Theme, apps = PORTAL_APPS): PortalParts {
     // 行き先を示す右向きの山形（線のアイコン 1 つ分）
     '.apps a:after{content:"";flex:none;margin-left:auto;width:8px;height:8px;border:solid var(--sk-muted);border-width:2px 2px 0 0;transform:rotate(45deg)}' +
     '.apps a:hover,.out:hover{background:var(--sk-surface-2);border-color:var(--sk-accent)}' +
+    '.i{flex:none;font-size:2rem;line-height:1}' +
     '.apps b{display:block;font-size:1.125rem;font-weight:600}' +
     'small{display:block;font-size:.875rem;color:var(--sk-muted)}';
   const head =
@@ -121,14 +125,15 @@ function buildPortalParts(theme: Theme, apps = PORTAL_APPS): PortalParts {
   // 表紙の一言は、入口から開けるアプリの名前をそのまま並べる
   const names = apps.map((app) => escapeHtml(app.label)).join('・');
   const top =
-    '<main class="cover"><h1>sakekasu</h1>' +
+    // 印の絵文字は 4 アプリの表紙と共通。そろえて残す
+    '<main class="cover"><div class="mark" aria-hidden="true">🍶</div><h1>sakekasu</h1>' + // check-ui-ignore
     `<div class="rule" aria-hidden="true">◆</div><p class="lead">${names} の入口</p>` +
     '<a class="btn" href="/apps">パスキーでログイン</a><p class="note">共通ログインの画面へ移動します</p></main>';
   const items = apps
     .map((app) => {
       const host = new URL(app.url).host;
       return (
-        `<li><a href="${escapeHtml(app.url)}">` +
+        `<li><a href="${escapeHtml(app.url)}"><span class="i" aria-hidden="true">${escapeHtml(app.icon)}</span>` +
         `<span><b>${escapeHtml(app.label)}</b><small>${escapeHtml(host)}</small></span></a></li>`
       );
     })
